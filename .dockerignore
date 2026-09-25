@@ -1,0 +1,17 @@
+.git/
+frontend/node_modules/
+frontend/dist/
+frontend/dev-dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+vendor/
+var/
+.phpunit.cache/
+.idea/
+.vscode/
+docs/
+node_modules/
+*.log
+.DS_Store
+.lando-data/
+autocron/

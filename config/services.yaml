@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../vendor/symfony/dependency-injection/Loader/schema/services.schema.json
+
+parameters:
+    app.attachments_root: '/var/storage/uploads'
+    app.backups_dir: '/var/backups'
+    app.frontend_url: '%env(default:app_frontend_url_default:FRONTEND_URL)%'
+    app_frontend_url_default: 'http://localhost'
+    app_mailer_dsn_default: 'null://null'
+    app.mailer_from: '%env(default:app_mailer_from_default:MAILER_FROM)%'
+    app_mailer_from_default: 'noreply@autocron.local'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            $loginLimiter: '@limiter.login'
+            $refreshLimiter: '@limiter.refresh'
+            $forgotPasswordLimiter: '@limiter.forgot_password'
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Enum/'
+            - '../src/Kernel.php'
+            - '../src/Dto/'
+
+    App\Service\Storage\AttachmentStorageInterface: '@App\Service\Storage\LocalAttachmentStorage'
+
+    _instanceof:
+        App\Service\Push\PushNotifierInterface:
+            tags: ['app.push_notifier']
+
+when@test:
+    parameters:
+        app.attachments_root: '%kernel.project_dir%/var/test-storage/uploads'
+        app.backups_dir: '%kernel.project_dir%/var/test-storage/backups'

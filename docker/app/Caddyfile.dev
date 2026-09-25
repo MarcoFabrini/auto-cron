@@ -1,0 +1,17 @@
+:80 {
+	handle /api/* {
+		root * /app/public
+		php_server {
+			worker {
+				file /app/public/index.php
+				watch
+			}
+		}
+	}
+
+	handle {
+		root * /app/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

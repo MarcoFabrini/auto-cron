@@ -1,0 +1,7 @@
+dist
+dev-dist
+coverage
+node_modules
+src/api/types.gen.ts
+*.config.js
+*.config.ts

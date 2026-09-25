@@ -1,0 +1,703 @@
+{
+  "app": {
+    "name": "AutoCron",
+    "tagline": "Gestione veicoli self-hosted"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "vehicles": "Veicoli",
+    "maintenance": "Manutenzioni",
+    "refueling": "Rifornimenti",
+    "expenses": "Spese",
+    "reminders": "Promemoria",
+    "attachments": "Allegati",
+    "settings": "Impostazioni"
+  },
+  "auth": {
+    "login": {
+      "title": "Accedi",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Entra",
+      "no_account": "Non hai un account?",
+      "register": "Registrati"
+    },
+    "register": {
+      "title": "Crea account",
+      "email": "Email",
+      "password": "Password",
+      "first_name": "Nome",
+      "last_name": "Cognome",
+      "first_user_hint": "Primo avvio: questo account diventerà l'amministratore dell'istanza. Dopo la registrazione libera si chiude: gli altri utenti entrano solo su invito.",
+      "submit": "Crea account",
+      "have_account": "Hai già un account?",
+      "login": "Accedi"
+    },
+    "logout": "Esci",
+    "forgot": {
+      "link": "Password dimenticata?",
+      "title": "Recupera l'accesso",
+      "description": "Inserisci la tua email: ti invieremo un link per reimpostare la password.",
+      "submit": "Invia link di reset",
+      "sent_title": "Controlla la tua email",
+      "sent_description": "Se esiste un account con questa email, riceverai un link per reimpostare la password.",
+      "back_to_login": "Torna al login"
+    },
+    "reset": {
+      "title": "Nuova password",
+      "description": "Scegli una nuova password per il tuo account.",
+      "submit": "Reimposta password",
+      "success": "Password reimpostata, accedi con la nuova password.",
+      "invalid_title": "Link non valido",
+      "invalid_description": "Il link di reset è mancante o non valido. Richiedine uno nuovo."
+    },
+    "verify": {
+      "checking": "Verifica in corso…",
+      "success_title": "Email confermata",
+      "success_description": "Il tuo indirizzo email è stato verificato.",
+      "error_title": "Verifica non riuscita",
+      "invalid_title": "Link non valido",
+      "invalid_description": "Il link di verifica è mancante o non valido.",
+      "continue": "Continua",
+      "banner": "Conferma il tuo indirizzo email.",
+      "resend": "Rinvia email",
+      "resent": "Email di verifica inviata."
+    },
+    "invite": {
+      "title": "Invito a un'organizzazione",
+      "login_required": "Accedi per accettare l'invito.",
+      "login_required_for": "L'invito a \"{{org}}\" è per {{email}}. Accedi con quell'indirizzo per accettarlo.",
+      "email_mismatch": "Sei connesso con un altro account. L'invito è per {{email}}: accedi con quell'indirizzo.",
+      "register_intro": "Sei stato invitato a \"{{org}}\". Crea il tuo account per {{email}} e unisciti.",
+      "register_submit": "Crea account e unisciti",
+      "have_account": "Hai già un account?",
+      "accepting": "Accettazione in corso…",
+      "success_title": "Invito accettato",
+      "success_description": "Ora fai parte dell'organizzazione.",
+      "joined": "Ora fai parte di \"{{org}}\".",
+      "error_title": "Invito non valido",
+      "invalid_title": "Link non valido",
+      "invalid_description": "Il link di invito è mancante o non valido.",
+      "continue": "Vai alla dashboard"
+    }
+  },
+  "actions": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "create": "Crea",
+    "back": "Indietro",
+    "confirm": "Conferma",
+    "loading": "Caricamento..."
+  },
+  "common": {
+    "none": "Nessuno",
+    "optional": "Opzionale",
+    "coming_soon": "In arrivo"
+  },
+  "dashboard": {
+    "total_cost": "Spesa totale",
+    "your_vehicles": "I tuoi veicoli",
+    "view_all": "Vedi tutti",
+    "vehicle_count_one": "{{count}} veicolo",
+    "vehicle_count_other": "{{count}} veicoli",
+    "upcoming_reminders": "Prossime scadenze",
+    "upcoming_reminders_empty": "Nessuna scadenza nei prossimi 30 giorni."
+  },
+  "quick_add": {
+    "open": "Aggiungi",
+    "choose_vehicle": "Scegli un veicolo",
+    "new_vehicle": "Nuovo veicolo"
+  },
+  "maintenance": {
+    "new": "Nuova manutenzione",
+    "new_description": "Registra una manutenzione effettuata.",
+    "edit": "Modifica manutenzione",
+    "info": "Dettagli manutenzione",
+    "info_description": "Informazioni intervento.",
+    "type": "Tipo intervento",
+    "category": "Categoria",
+    "performed_at": "Data",
+    "km": "Km al momento",
+    "description": "Descrizione",
+    "cost": "Costo",
+    "workshop": "Officina",
+    "select_vehicle": "Seleziona veicolo",
+    "created": "Manutenzione registrata",
+    "updated": "Manutenzione aggiornata",
+    "deleted": "Manutenzione eliminata",
+    "delete": {
+      "title": "Eliminare manutenzione?",
+      "description": "Operazione irreversibile."
+    },
+    "list": {
+      "description": "Storia manutenzioni del veicolo."
+    },
+    "empty": {
+      "title": "Nessuna manutenzione",
+      "description": "Registra il primo intervento."
+    },
+    "select_vehicle_first": {
+      "title": "Seleziona un veicolo",
+      "description": "Scegli un veicolo per registrare una manutenzione."
+    },
+    "type_options": {
+      "oil_change": "Cambio olio",
+      "filters": "Filtri",
+      "brakes": "Freni",
+      "tires": "Pneumatici",
+      "inspection": "Tagliando",
+      "repair": "Riparazione",
+      "battery": "Batteria",
+      "belt_change": "Cinghia distribuzione",
+      "spark_plugs": "Candele",
+      "coolant": "Liquido refrigerante",
+      "clutch": "Frizione",
+      "suspension": "Sospensioni",
+      "body_work": "Carrozzeria",
+      "wash": "Lavaggio",
+      "other": "Altro"
+    },
+    "category_options": {
+      "scheduled": "Programmata",
+      "unscheduled": "Imprevista"
+    }
+  },
+  "settings": {
+    "description": "Account, preferenze e notifiche.",
+    "account": "Account",
+    "account_description": "I tuoi dati.",
+    "name": "Nome",
+    "email": "Email",
+    "organization": "Organizzazione",
+    "preferences": "Preferenze",
+    "language": "Lingua",
+    "theme": "Tema",
+    "theme_light": "Chiaro",
+    "theme_dark": "Scuro",
+    "theme_system": "Sistema",
+    "notifications": "Notifiche",
+    "notifications_description": "Ricevi avvisi per le scadenze dei veicoli.",
+    "source_db": "Sorgente attiva: questa interfaccia",
+    "source_none": "Non configurata",
+    "push": {
+      "enable": "Abilita notifiche",
+      "disable": "Disabilita notifiche",
+      "unsupported": "Notifiche push non supportate da questo browser. Su iPhone/iPad aggiungi prima l'app alla schermata Home.",
+      "sw_unavailable": "Il service worker non si è attivato: servono HTTPS con un certificato valido (in sviluppo: fida la CA di Lando) e un ricaricamento della pagina.",
+      "not_configured": "Notifiche push non configurate dal server (VAPID mancante).",
+      "denied": "Permesso notifiche negato. Abilitalo dalle impostazioni del browser.",
+      "card_title": "Notifiche push (VAPID)",
+      "card_description": "Chiavi VAPID per inviare le notifiche push. Vale per tutta l'istanza; finché non generi una coppia, le notifiche push restano disattivate.",
+      "no_keys": "Nessuna coppia VAPID configurata. Generane una per abilitare le notifiche push.",
+      "generate": "Genera chiavi VAPID",
+      "regenerate": "Rigenera chiavi",
+      "public_key": "Chiave pubblica VAPID",
+      "public_key_hint": "Inviata al browser per la sottoscrizione (non è segreta).",
+      "subject": "Soggetto VAPID",
+      "subject_hint": "mailto: o URL del responsabile (richiesto dallo standard).",
+      "send_test": "Invia notifica di prova",
+      "saved": "Configurazione push salvata",
+      "test_sent": "Notifica di prova inviata ({{count}} device)",
+      "generated": "Chiavi VAPID generate ({{count}} sottoscrizioni rimosse: gli utenti devono riattivare le notifiche)",
+      "regenerate_confirm_title": "Rigenerare le chiavi VAPID?",
+      "regenerate_confirm_description": "Tutte le sottoscrizioni push esistenti smetteranno di funzionare e ogni utente dovrà riattivare le notifiche. Operazione irreversibile."
+    },
+    "profile": "Profilo",
+    "profile_description": "I tuoi dati personali.",
+    "security": "Sicurezza",
+    "security_description": "Gestisci la password del tuo account.",
+    "organization_description": "L'organizzazione a cui appartieni.",
+    "preferences_description": "Personalizza l'aspetto dell'app.",
+    "role": {
+      "owner": "Proprietario",
+      "admin": "Amministratore",
+      "member": "Membro"
+    },
+    "members": {
+      "title": "Membri",
+      "you": "tu",
+      "active": "Attivo",
+      "pending": "In attesa",
+      "pending_title": "Inviti in attesa",
+      "revoke": "Revoca invito",
+      "invite_revoked": "Invito revocato.",
+      "remove": "Rimuovi",
+      "remove_title": "Rimuovere il membro?",
+      "remove_description": "{{email}} perderà l'accesso a questa organizzazione.",
+      "invite_title": "Invita un membro",
+      "email": "Email",
+      "role": "Ruolo",
+      "invite_submit": "Invia invito",
+      "invited": "Invito inviato.",
+      "removed": "Membro rimosso."
+    }
+  },
+  "reminder": {
+    "new": "Nuovo promemoria",
+    "new_description": "Crea una scadenza da monitorare.",
+    "edit": "Modifica promemoria",
+    "info": "Dettagli promemoria",
+    "type": "Tipo",
+    "description": "Descrizione",
+    "due_date": "Scadenza (data)",
+    "due_km": "Scadenza (km)",
+    "due_hint": "Almeno data o km",
+    "notify_days_before": "Avvisa giorni prima",
+    "notify_hint": "Quanti giorni prima ricevere la notifica",
+    "completed_at": "Completato il",
+    "days": "giorni",
+    "mark_complete": "Segna come completato",
+    "completed": "Promemoria completato",
+    "select_vehicle": "Seleziona veicolo",
+    "created": "Promemoria creato",
+    "updated": "Promemoria aggiornato",
+    "deleted": "Promemoria eliminato",
+    "delete": {
+      "title": "Eliminare promemoria?",
+      "description": "Operazione irreversibile."
+    },
+    "list": {
+      "description": "Scadenze del veicolo."
+    },
+    "empty": {
+      "title": "Nessun promemoria",
+      "description": "Crea la prima scadenza."
+    },
+    "select_vehicle_first": {
+      "title": "Seleziona un veicolo",
+      "description": "Scegli un veicolo per creare una scadenza."
+    },
+    "urgency": {
+      "overdue": "Scaduto",
+      "soon": "In scadenza",
+      "ok": "OK",
+      "done": "Completato"
+    },
+    "type_options": {
+      "inspection": "Revisione",
+      "insurance": "Assicurazione",
+      "road_tax": "Bollo",
+      "service": "Tagliando",
+      "oil_change": "Cambio olio",
+      "tires": "Pneumatici",
+      "battery": "Batteria",
+      "license": "Patente",
+      "extinguisher": "Estintore",
+      "custom": "Personalizzato"
+    }
+  },
+  "expense": {
+    "new": "Nuova spesa",
+    "new_description": "Registra una spesa del veicolo.",
+    "edit": "Modifica spesa",
+    "info": "Dettagli spesa",
+    "occurred_at": "Data",
+    "category": "Categoria",
+    "description": "Descrizione",
+    "amount": "Importo",
+    "recurring": "Spesa ricorrente",
+    "recurring_period": "Periodicità",
+    "notes": "Note",
+    "select_vehicle": "Seleziona veicolo",
+    "created": "Spesa registrata",
+    "updated": "Spesa aggiornata",
+    "deleted": "Spesa eliminata",
+    "delete": {
+      "title": "Eliminare spesa?",
+      "description": "Operazione irreversibile."
+    },
+    "list": {
+      "description": "Spese del veicolo."
+    },
+    "empty": {
+      "title": "Nessuna spesa",
+      "description": "Registra la prima spesa."
+    },
+    "select_vehicle_first": {
+      "title": "Seleziona un veicolo",
+      "description": "Scegli un veicolo per registrare una spesa."
+    },
+    "category_options": {
+      "insurance": "Assicurazione",
+      "road_tax": "Bollo",
+      "tax": "Tassa",
+      "parking": "Parcheggio",
+      "toll": "Pedaggio",
+      "fine": "Multa",
+      "accessory": "Accessorio",
+      "financing": "Finanziamento",
+      "subscription": "Abbonamento",
+      "garage": "Garage",
+      "car_wash": "Autolavaggio",
+      "theft_damage": "Furto/Danno",
+      "other": "Altro"
+    },
+    "recurring_options": {
+      "weekly": "Settimanale",
+      "monthly": "Mensile",
+      "quarterly": "Trimestrale",
+      "semiannual": "Semestrale",
+      "yearly": "Annuale",
+      "biennial": "Biennale"
+    }
+  },
+  "refueling": {
+    "new": "Nuovo rifornimento",
+    "new_description": "Registra un rifornimento.",
+    "edit": "Modifica rifornimento",
+    "info": "Dettagli rifornimento",
+    "info_description": "Dati pieno.",
+    "detail_title": "Rifornimento {{liters}} L",
+    "refueled_at": "Data",
+    "km": "Km al momento",
+    "liters": "Litri",
+    "price_per_liter": "€/L",
+    "total_cost": "Totale",
+    "fuel_type": "Carburante",
+    "full_tank": "Pieno",
+    "station": "Distributore",
+    "notes": "Note",
+    "select_vehicle": "Seleziona veicolo",
+    "created": "Rifornimento registrato",
+    "updated": "Rifornimento aggiornato",
+    "deleted": "Rifornimento eliminato",
+    "delete": {
+      "title": "Eliminare rifornimento?",
+      "description": "Operazione irreversibile. Il calcolo consumi cambierà."
+    },
+    "list": {
+      "description": "Storico rifornimenti del veicolo."
+    },
+    "empty": {
+      "title": "Nessun rifornimento",
+      "description": "Registra il primo pieno."
+    },
+    "select_vehicle_first": {
+      "title": "Seleziona un veicolo",
+      "description": "Scegli un veicolo per registrare un rifornimento."
+    }
+  },
+  "vehicle": {
+    "new": "Nuovo veicolo",
+    "new_description": "Inserisci i dati base del veicolo.",
+    "edit": "Modifica veicolo",
+    "info": "Dati veicolo",
+    "info_description": "Informazioni anagrafica del veicolo.",
+    "name": "Nome",
+    "brand": "Marca",
+    "model": "Modello",
+    "year": "Anno",
+    "license_plate": "Targa",
+    "vin": "Numero telaio",
+    "type": "Tipo veicolo",
+    "fuel_type": "Carburante",
+    "secondary_fuel_type": "Carburante secondario",
+    "secondary_fuel_hint": "Solo per veicoli bi-fuel (GPL, metano, ibrido)",
+    "initial_km": "Km iniziali",
+    "current_km": "Km attuali",
+    "notes": "Note",
+    "archived": "Archiviato",
+    "created": "Veicolo creato",
+    "updated": "Veicolo aggiornato",
+    "deleted": "Veicolo eliminato",
+    "delete": {
+      "title": "Eliminare veicolo?",
+      "description": "Operazione irreversibile. Tutti i dati associati (manutenzioni, rifornimenti, ecc.) saranno eliminati."
+    },
+    "list": {
+      "description": "I tuoi veicoli registrati."
+    },
+    "empty": {
+      "title": "Nessun veicolo",
+      "description": "Aggiungi il tuo primo veicolo per iniziare."
+    },
+    "type_options": {
+      "car": "Auto",
+      "motorcycle": "Moto",
+      "van": "Furgone",
+      "camper": "Camper",
+      "boat": "Barca",
+      "truck": "Camion",
+      "bicycle": "Bici",
+      "scooter": "Scooter",
+      "trailer": "Rimorchio",
+      "tractor": "Trattore"
+    },
+    "fuel": {
+      "gasoline": "Benzina",
+      "diesel": "Diesel",
+      "lpg": "GPL",
+      "cng": "Metano",
+      "electric": "Elettrico",
+      "hybrid": "Ibrido",
+      "hydrogen": "Idrogeno",
+      "ethanol": "Etanolo",
+      "biodiesel": "Biodiesel"
+    },
+    "share": {
+      "title": "Condivisione",
+      "description": "Condividi questo veicolo in sola lettura con altri membri dell'organizzazione, scelti dall'elenco. Chi lo riceve lo vede ma non può modificarlo.",
+      "empty": "Non ancora condiviso con nessuno.",
+      "you": "tu",
+      "invite_title": "Condividi in sola lettura",
+      "role": {
+        "admin": "Proprietario",
+        "editor": "Modifica",
+        "viewer": "Sola lettura"
+      },
+      "invite_submit": "Condividi",
+      "shared": "Veicolo condiviso",
+      "revoked": "Condivisione revocata",
+      "revoke": "Revoca",
+      "revoke_title": "Revocare la condivisione?",
+      "revoke_description": "{{name}} non avrà più accesso a questo veicolo.",
+      "select_people": "Seleziona persone",
+      "selected_count_one": "{{count}} persona selezionata",
+      "selected_count_other": "{{count}} persone selezionate",
+      "no_candidates": "Nessun altro membro dell'organizzazione con cui condividere: le persone entrano nell'organizzazione su invito (Impostazioni → Membri).",
+      "submit_many_one": "Condividi con {{count}} persona",
+      "submit_many_other": "Condividi con {{count}} persone"
+    },
+    "stats": {
+      "title": "Statistiche",
+      "km_driven": "Km percorsi",
+      "cost_per_km": "Costo al km",
+      "total_cost": "Costo totale",
+      "refuelings": "Rifornimenti",
+      "maintenances": "Manutenzioni",
+      "expenses": "Spese",
+      "consumption": "Consumo medio",
+      "consumption_unknown": "Servono almeno 2 pieni"
+    }
+  },
+  "error_page": {
+    "back_home": "Torna alla home",
+    "not_found": {
+      "title": "Pagina non trovata",
+      "description": "La pagina che cerchi non esiste o è stata spostata."
+    },
+    "crash": {
+      "title": "Qualcosa è andato storto",
+      "description": "Si è verificato un errore imprevisto. Ricarica la pagina o riprova.",
+      "reload": "Ricarica"
+    }
+  },
+  "attachment": {
+    "title": "Allegati",
+    "description": "Foto e documenti — max 10 MB (JPG, PNG, WebP, PDF).",
+    "add": "Aggiungi",
+    "open": "Apri {{name}}",
+    "uploaded": "Allegato caricato",
+    "deleted": "Allegato eliminato",
+    "empty": {
+      "title": "Nessun allegato",
+      "description": "Aggiungi foto o documenti."
+    },
+    "delete": {
+      "title": "Eliminare allegato?",
+      "description": "Operazione irreversibile."
+    }
+  },
+  "errors": {
+    "common": {
+      "invalid_date": "Data non valida",
+      "invalid_decimal": "Numero non valido (es. 12,50)"
+    },
+    "push": {
+      "not_configured": "Notifiche push non configurate: genera prima le chiavi VAPID e abilitale",
+      "no_subscription": "Nessun device sottoscritto: attiva prima le notifiche su questo browser",
+      "no_keys": "Genera prima una coppia VAPID prima di abilitare le notifiche"
+    },
+    "settings": {
+      "instance_admin_required": "Solo l'amministratore dell'istanza (il primo utente registrato) può modificare queste impostazioni"
+    },
+    "auth": {
+      "invalid_credentials": "Email o password non validi",
+      "too_many_attempts": "Troppi tentativi, riprova più tardi",
+      "session_expired": "Sessione scaduta, accedi di nuovo",
+      "email_taken": "Email già registrata",
+      "invalid_current_password": "La password attuale non è corretta",
+      "invalid_reset_token": "Il link di reset è scaduto o non valido",
+      "registration_closed": "La registrazione libera è chiusa su questa istanza: chiedi un invito a chi la amministra"
+    },
+    "access": {
+      "org_admin_required": "Solo gli amministratori dell'organizzazione possono fare questa operazione."
+    },
+    "refueling": {
+      "vehicle": {
+        "required": "Veicolo richiesto"
+      },
+      "km": {
+        "required": "Inserisci i km"
+      },
+      "fuel_type": {
+        "required": "Seleziona il carburante"
+      },
+      "not_found": "Rifornimento non trovato"
+    },
+    "expense": {
+      "vehicle": {
+        "required": "Veicolo richiesto"
+      },
+      "category": {
+        "required": "Seleziona la categoria"
+      },
+      "description": {
+        "required": "Inserisci una descrizione"
+      },
+      "recurring_period": {
+        "required": "Seleziona la periodicità"
+      },
+      "not_found": "Spesa non trovata"
+    },
+    "reminder": {
+      "vehicle": {
+        "required": "Veicolo richiesto"
+      },
+      "type": {
+        "required": "Seleziona il tipo"
+      },
+      "description": {
+        "required": "Inserisci una descrizione"
+      },
+      "notify_days": {
+        "required": "Inserisci i giorni"
+      },
+      "due_required": "Specifica almeno una scadenza (data o km)",
+      "not_found": "Promemoria non trovato"
+    },
+    "maintenance": {
+      "vehicle": {
+        "required": "Veicolo richiesto"
+      },
+      "km": {
+        "required": "Inserisci i km"
+      },
+      "type": {
+        "required": "Seleziona il tipo"
+      },
+      "category": {
+        "required": "Seleziona la categoria"
+      },
+      "description": {
+        "required": "Inserisci una descrizione"
+      },
+      "not_found": "Manutenzione non trovata"
+    },
+    "vehicle": {
+      "name": {
+        "required": "Inserisci un nome"
+      },
+      "brand": {
+        "required": "Inserisci la marca"
+      },
+      "model": {
+        "required": "Inserisci il modello"
+      },
+      "year": {
+        "required": "Inserisci l'anno",
+        "out_of_range": "Anno non valido"
+      },
+      "type": {
+        "required": "Seleziona il tipo di veicolo"
+      },
+      "fuel_type": {
+        "required": "Seleziona il carburante"
+      },
+      "initial_km": {
+        "required": "Inserisci i km iniziali"
+      },
+      "duplicate_fuel_type": "Il carburante secondario deve essere diverso dal primario",
+      "not_found": "Veicolo non trovato"
+    },
+    "upload": {
+      "file_required": "Seleziona un file",
+      "invalid_file": "File non valido",
+      "file_too_large": "File troppo grande (max 10 MB)",
+      "mime_not_allowed": "Formato non supportato (solo JPG, PNG, WebP, PDF)",
+      "entity_required": "Riferimento mancante"
+    },
+    "attachment": {
+      "not_found": "Allegato non trovato",
+      "file_missing": "File non disponibile"
+    },
+    "query": {
+      "entity_required": "Parametri mancanti"
+    },
+    "entity": {
+      "not_found": "Risorsa non trovata"
+    },
+    "http": {
+      "401": "Non autorizzato",
+      "403": "Accesso negato",
+      "404": "Risorsa non trovata",
+      "500": "Errore server"
+    },
+    "validation_failed": "Verifica i dati inseriti",
+    "unknown": "Errore inatteso",
+    "account": {
+      "first_name": {
+        "required": "Inserisci il nome"
+      },
+      "last_name": {
+        "required": "Inserisci il cognome"
+      },
+      "email": {
+        "required": "Inserisci l'email",
+        "invalid": "Email non valida"
+      },
+      "current_password": {
+        "required": "Inserisci la password attuale"
+      },
+      "confirm_password": {
+        "required": "Conferma la password"
+      },
+      "password": {
+        "min": "Minimo 8 caratteri",
+        "mismatch": "Le password non coincidono"
+      },
+      "org_name": {
+        "required": "Inserisci il nome dell'organizzazione"
+      }
+    },
+    "share": {
+      "not_org_member": "Selezione non valida: puoi condividere solo con membri dell'organizzazione.",
+      "cannot_remove_owner": "Il proprietario del veicolo non può essere rimosso.",
+      "not_found": "Condivisione non trovata."
+    }
+  },
+  "account": {
+    "name": "Nome e cognome",
+    "first_name": "Nome",
+    "last_name": "Cognome",
+    "email": "Email",
+    "password": "Password",
+    "current_password": "Password attuale",
+    "new_password": "Nuova password",
+    "confirm_password": "Conferma password",
+    "org_name": "Nome organizzazione",
+    "edit_profile": "Modifica profilo",
+    "edit_profile_description": "Aggiorna foto, nome, cognome ed email.",
+    "upload_photo": "Carica foto",
+    "remove_photo": "Rimuovi",
+    "avatar_too_large": "Immagine troppo grande (max 2MB)",
+    "avatar_invalid_type": "Formato non supportato (JPG, PNG o WebP)",
+    "change_password": "Cambia password",
+    "change_password_description": "Per sicurezza inserisci la password attuale.",
+    "edit_organization": "Modifica organizzazione",
+    "edit_organization_description": "Rinomina la tua organizzazione.",
+    "profile_updated": "Profilo aggiornato",
+    "password_updated": "Password aggiornata",
+    "org_updated": "Organizzazione aggiornata"
+  },
+  "vehicle_picker": {
+    "title": "Scegli un veicolo",
+    "add_vehicle": "Aggiungi veicolo",
+    "no_vehicles": {
+      "title": "Nessun veicolo",
+      "description": "Aggiungi il tuo primo veicolo per iniziare."
+    }
+  }
+}

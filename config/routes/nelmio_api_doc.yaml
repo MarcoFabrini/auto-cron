@@ -1,0 +1,13 @@
+app.api_doc_ui:
+    path: /api/doc
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.scalar
+        area: default
+
+app.api_doc_json:
+    path: /api/doc.json
+    methods: GET
+    defaults:
+        _controller: nelmio_api_doc.controller.swagger_json
+        area: default

@@ -1,0 +1,75 @@
+name: autocron
+
+proxy:
+  appserver:
+    - autocron.lndo.site
+  mailpit:
+    - mail.autocron.lndo.site
+
+services:
+  appserver:
+    type: lando
+    ssl: true
+    services:
+      build:
+        context: .
+        dockerfile: docker/app/Dockerfile
+        target: dev
+      command: frankenphp run --config /etc/frankenphp/Caddyfile
+      environment:
+        APP_ENV: dev
+        APP_DEBUG: "1"
+        APP_SECRET: dev_secret_change_me
+        DATABASE_URL: "mysql://autocron:autocron@database:3306/autocron?serverVersion=mariadb-11.4.0&charset=utf8mb4"
+        JWT_SECRET_KEY: "%kernel.project_dir%/config/jwt/private.pem"
+        JWT_PUBLIC_KEY: "%kernel.project_dir%/config/jwt/public.pem"
+        JWT_PASSPHRASE: dev_jwt_passphrase
+        MAILER_DSN: "smtp://mailpit:1025"
+        FRONTEND_URL: "https://autocron.lndo.site"
+        CORS_ALLOW_ORIGIN: '^https?://(localhost|127\.0\.0\.1|.*\.lndo\.site)(:[0-9]+)?$'
+        TRUSTED_PROXIES: "REMOTE_ADDR"
+    build:
+      - composer install
+
+  database:
+    type: mariadb:11.4
+    portforward: 3306
+    creds:
+      user: autocron
+      password: autocron
+      database: autocron
+    build_as_root:
+      - mysql -uroot -e "GRANT ALL PRIVILEGES ON \`autocron%\`.* TO 'autocron'@'%'; FLUSH PRIVILEGES;"
+
+  mailpit:
+    type: mailpit
+
+  node:
+    type: node:20
+    build:
+      - cd /app/frontend && npm install
+    working_dir: /app/frontend
+    command: cd /app/frontend && npm run watch
+    scanner: false
+
+tooling:
+  composer:
+    service: appserver
+  sf:
+    service: appserver
+    cmd: php bin/console
+  phpunit:
+    service: appserver
+    cmd: php bin/phpunit
+    env:
+      APP_ENV: test
+      APP_DEBUG: "0"
+  phpstan:
+    service: appserver
+    cmd: php vendor/bin/phpstan analyse --memory-limit=512M --no-progress
+  jwt-keys:
+    service: appserver
+    cmd: php bin/console lexik:jwt:generate-keypair --skip-if-exists
+  npm:
+    service: node
+    dir: /app/frontend

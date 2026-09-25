@@ -1,0 +1,6 @@
+# SMTP si configura solo da env (self-host: niente UI/DB per un segreto che
+# può dirottare tutte le email). Default null://null se MAILER_DSN non è
+# impostato: invio no-op finché non lo configuri, niente crash all'avvio.
+framework:
+    mailer:
+        dsn: '%env(default:app_mailer_dsn_default:MAILER_DSN)%'

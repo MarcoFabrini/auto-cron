@@ -1,0 +1,59 @@
+# Pattern unico per gli endpoint API pubblici: usato sia dal firewall `login`
+# sia da access_control. Un solo punto da toccare quando si aggiunge un endpoint.
+parameters:
+    app.api_public_pattern: '^/api/(auth/(login|register|registration|refresh|logout|forgot-password|reset-password|verify-email|invitation/register|invitation/[a-f0-9]{64})|health|doc(\.json)?)$'
+
+security:
+    # Argon2id per le password (default 'auto' su PHP 8.2+ usa Argon2id se disponibile)
+    password_hashers:
+        Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+            algorithm: auto
+
+    # Doctrine user provider basato su email
+    providers:
+        app_user_provider:
+            entity:
+                class: App\Entity\User
+                property: email
+
+    # Gerarchia ruoli
+    role_hierarchy:
+        ROLE_ORG_OWNER:  [ROLE_ORG_ADMIN, ROLE_ORG_MEMBER]
+        ROLE_ORG_ADMIN:  [ROLE_ORG_MEMBER]
+        ROLE_ORG_MEMBER: [ROLE_USER]
+
+    firewalls:
+        dev:
+            pattern: ^/(_(profiler|wdt)|css|images|js)/
+            security: false
+
+        # Endpoint di login: emette il JWT
+        login:
+            pattern: '%app.api_public_pattern%'
+            stateless: true
+            security: false
+
+        # Tutti gli altri /api richiedono JWT valido
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: app_user_provider
+            jwt: ~
+
+    # Accesso pubblico solo agli endpoint auth; tutto il resto richiede ROLE_USER.
+    # NB: col firewall `login` a security:false le richieste pubbliche non arrivano
+    # ad access_control — la riga PUBLIC_ACCESS è difesa in profondità se quel
+    # flag cambiasse.
+    access_control:
+        - { path: '%app.api_public_pattern%', roles: PUBLIC_ACCESS }
+        - { path: ^/api,                      roles: ROLE_USER }
+
+when@test:
+    security:
+        password_hashers:
+            # Password hash veloci nei test
+            Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface:
+                algorithm: auto
+                cost: 4
+                time_cost: 3
+                memory_cost: 10

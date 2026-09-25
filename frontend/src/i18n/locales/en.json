@@ -1,0 +1,691 @@
+{
+  "app": {
+    "name": "AutoCron",
+    "tagline": "Self-hosted vehicle management"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "vehicles": "Vehicles",
+    "maintenance": "Maintenance",
+    "refueling": "Refueling",
+    "expenses": "Expenses",
+    "reminders": "Reminders",
+    "attachments": "Attachments",
+    "settings": "Settings"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "no_account": "No account yet?",
+      "register": "Sign up"
+    },
+    "register": {
+      "title": "Create account",
+      "email": "Email",
+      "password": "Password",
+      "first_name": "First name",
+      "last_name": "Last name",
+      "first_user_hint": "First run: this account becomes the instance administrator. After that, open registration closes: other users join by invitation only.",
+      "submit": "Create account",
+      "have_account": "Already have an account?",
+      "login": "Sign in"
+    },
+    "logout": "Sign out",
+    "forgot": {
+      "link": "Forgot password?",
+      "title": "Recover access",
+      "description": "Enter your email and we'll send you a link to reset your password.",
+      "submit": "Send reset link",
+      "sent_title": "Check your email",
+      "sent_description": "If an account exists for this email, you'll receive a link to reset your password.",
+      "back_to_login": "Back to login"
+    },
+    "reset": {
+      "title": "New password",
+      "description": "Choose a new password for your account.",
+      "submit": "Reset password",
+      "success": "Password reset, sign in with your new password.",
+      "invalid_title": "Invalid link",
+      "invalid_description": "The reset link is missing or invalid. Request a new one."
+    },
+    "verify": {
+      "checking": "Verifying…",
+      "success_title": "Email confirmed",
+      "success_description": "Your email address has been verified.",
+      "error_title": "Verification failed",
+      "invalid_title": "Invalid link",
+      "invalid_description": "The verification link is missing or invalid.",
+      "continue": "Continue",
+      "banner": "Confirm your email address.",
+      "resend": "Resend email",
+      "resent": "Verification email sent."
+    },
+    "invite": {
+      "title": "Organization invitation",
+      "login_required": "Sign in to accept the invitation.",
+      "login_required_for": "The invitation to \"{{org}}\" is for {{email}}. Sign in with that address to accept it.",
+      "email_mismatch": "You're signed in with a different account. The invitation is for {{email}}: sign in with that address.",
+      "register_intro": "You've been invited to \"{{org}}\". Create your account for {{email}} and join.",
+      "register_submit": "Create account and join",
+      "have_account": "Already have an account?",
+      "accepting": "Accepting…",
+      "success_title": "Invitation accepted",
+      "success_description": "You're now part of the organization.",
+      "joined": "You're now part of \"{{org}}\".",
+      "error_title": "Invalid invitation",
+      "invalid_title": "Invalid link",
+      "invalid_description": "The invitation link is missing or invalid.",
+      "continue": "Go to dashboard"
+    }
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "confirm": "Confirm",
+    "loading": "Loading..."
+  },
+  "common": {
+    "none": "None",
+    "optional": "Optional",
+    "coming_soon": "Coming soon"
+  },
+  "dashboard": {
+    "total_cost": "Total spent",
+    "your_vehicles": "Your vehicles",
+    "view_all": "View all",
+    "vehicle_count_one": "{{count}} vehicle",
+    "vehicle_count_other": "{{count}} vehicles",
+    "upcoming_reminders": "Upcoming reminders",
+    "upcoming_reminders_empty": "No reminders due in the next 30 days."
+  },
+  "quick_add": {
+    "open": "Add",
+    "choose_vehicle": "Choose a vehicle",
+    "new_vehicle": "New vehicle"
+  },
+  "maintenance": {
+    "new": "New maintenance",
+    "new_description": "Log a maintenance task performed.",
+    "edit": "Edit maintenance",
+    "info": "Maintenance details",
+    "info_description": "Job information.",
+    "type": "Type",
+    "category": "Category",
+    "performed_at": "Date",
+    "km": "Mileage",
+    "description": "Description",
+    "cost": "Cost",
+    "workshop": "Workshop",
+    "select_vehicle": "Select vehicle",
+    "created": "Maintenance logged",
+    "updated": "Maintenance updated",
+    "deleted": "Maintenance deleted",
+    "delete": {
+      "title": "Delete maintenance?",
+      "description": "This is irreversible."
+    },
+    "list": {
+      "description": "Maintenance history for vehicle."
+    },
+    "empty": {
+      "title": "No maintenance entries",
+      "description": "Log the first one."
+    },
+    "select_vehicle_first": {
+      "title": "Select a vehicle",
+      "description": "Choose a vehicle to log a maintenance entry."
+    },
+    "type_options": {
+      "oil_change": "Oil change",
+      "filters": "Filters",
+      "brakes": "Brakes",
+      "tires": "Tires",
+      "inspection": "Inspection",
+      "repair": "Repair",
+      "battery": "Battery",
+      "belt_change": "Timing belt",
+      "spark_plugs": "Spark plugs",
+      "coolant": "Coolant",
+      "clutch": "Clutch",
+      "suspension": "Suspension",
+      "body_work": "Body work",
+      "wash": "Wash",
+      "other": "Other"
+    },
+    "category_options": {
+      "scheduled": "Scheduled",
+      "unscheduled": "Unscheduled"
+    }
+  },
+  "settings": {
+    "description": "Account, preferences and notifications.",
+    "account": "Account",
+    "account_description": "Your details.",
+    "name": "Name",
+    "email": "Email",
+    "organization": "Organization",
+    "preferences": "Preferences",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "theme_system": "System",
+    "notifications": "Notifications",
+    "notifications_description": "Get alerts for vehicle deadlines.",
+    "source_db": "Active source: this interface",
+    "source_none": "Not configured",
+    "push": {
+      "enable": "Enable notifications",
+      "disable": "Disable notifications",
+      "unsupported": "Push notifications are not supported by this browser. On iPhone/iPad, add the app to the Home Screen first.",
+      "sw_unavailable": "The service worker did not activate: it needs HTTPS with a valid certificate (in development: trust the Lando CA) and a page reload.",
+      "not_configured": "Push notifications not configured by the server (VAPID missing).",
+      "denied": "Notification permission denied. Enable it from browser settings.",
+      "card_title": "Push notifications (VAPID)",
+      "card_description": "VAPID keys used to send push notifications. Applies to the whole instance; until you generate a pair, push notifications stay off.",
+      "no_keys": "No VAPID keypair configured yet. Generate one to enable push notifications.",
+      "generate": "Generate VAPID keys",
+      "regenerate": "Regenerate keys",
+      "public_key": "VAPID public key",
+      "public_key_hint": "Sent to the browser to subscribe (not secret).",
+      "subject": "VAPID subject",
+      "subject_hint": "mailto: or URL of the responsible party (required by the standard).",
+      "send_test": "Send test notification",
+      "saved": "Push configuration saved",
+      "test_sent": "Test notification sent ({{count}} device(s))",
+      "generated": "VAPID keys generated ({{count}} subscriptions removed: users must re-enable notifications)",
+      "regenerate_confirm_title": "Regenerate VAPID keys?",
+      "regenerate_confirm_description": "All existing push subscriptions will stop working and every user will have to re-enable notifications. This cannot be undone."
+    },
+    "profile": "Profile",
+    "profile_description": "Your personal details.",
+    "security": "Security",
+    "security_description": "Manage your account password.",
+    "organization_description": "The organization you belong to.",
+    "preferences_description": "Customize the app appearance.",
+    "role": {
+      "owner": "Owner",
+      "admin": "Admin",
+      "member": "Member"
+    },
+    "members": {
+      "title": "Members",
+      "you": "you",
+      "active": "Active",
+      "pending": "Pending",
+      "pending_title": "Pending invitations",
+      "revoke": "Revoke invitation",
+      "invite_revoked": "Invitation revoked.",
+      "remove": "Remove",
+      "remove_title": "Remove member?",
+      "remove_description": "{{email}} will lose access to this organization.",
+      "invite_title": "Invite a member",
+      "email": "Email",
+      "role": "Role",
+      "invite_submit": "Send invitation",
+      "invited": "Invitation sent.",
+      "removed": "Member removed."
+    }
+  },
+  "reminder": {
+    "new": "New reminder",
+    "new_description": "Create a deadline to track.",
+    "edit": "Edit reminder",
+    "info": "Reminder details",
+    "type": "Type",
+    "description": "Description",
+    "due_date": "Due (date)",
+    "due_km": "Due (km)",
+    "due_hint": "At least date or km",
+    "notify_days_before": "Notify days before",
+    "notify_hint": "How many days before to be notified",
+    "completed_at": "Completed on",
+    "days": "days",
+    "mark_complete": "Mark as completed",
+    "completed": "Reminder completed",
+    "select_vehicle": "Select vehicle",
+    "created": "Reminder created",
+    "updated": "Reminder updated",
+    "deleted": "Reminder deleted",
+    "delete": {
+      "title": "Delete reminder?",
+      "description": "This is irreversible."
+    },
+    "list": {
+      "description": "Vehicle deadlines."
+    },
+    "empty": {
+      "title": "No reminders",
+      "description": "Create the first deadline."
+    },
+    "select_vehicle_first": {
+      "title": "Select a vehicle",
+      "description": "Choose a vehicle to create a reminder."
+    },
+    "urgency": {
+      "overdue": "Overdue",
+      "soon": "Due soon",
+      "ok": "OK",
+      "done": "Completed"
+    },
+    "type_options": {
+      "inspection": "Inspection",
+      "insurance": "Insurance",
+      "road_tax": "Road tax",
+      "service": "Service",
+      "oil_change": "Oil change",
+      "tires": "Tires",
+      "battery": "Battery",
+      "license": "License",
+      "extinguisher": "Extinguisher",
+      "custom": "Custom"
+    }
+  },
+  "expense": {
+    "new": "New expense",
+    "new_description": "Log a vehicle expense.",
+    "edit": "Edit expense",
+    "info": "Expense details",
+    "occurred_at": "Date",
+    "category": "Category",
+    "description": "Description",
+    "amount": "Amount",
+    "recurring": "Recurring expense",
+    "recurring_period": "Frequency",
+    "notes": "Notes",
+    "select_vehicle": "Select vehicle",
+    "created": "Expense logged",
+    "updated": "Expense updated",
+    "deleted": "Expense deleted",
+    "delete": {
+      "title": "Delete expense?",
+      "description": "This is irreversible."
+    },
+    "list": {
+      "description": "Vehicle expenses."
+    },
+    "empty": {
+      "title": "No expenses",
+      "description": "Log the first expense."
+    },
+    "select_vehicle_first": {
+      "title": "Select a vehicle",
+      "description": "Choose a vehicle to log an expense."
+    },
+    "category_options": {
+      "insurance": "Insurance",
+      "road_tax": "Road tax",
+      "tax": "Tax",
+      "parking": "Parking",
+      "toll": "Toll",
+      "fine": "Fine",
+      "accessory": "Accessory",
+      "financing": "Financing",
+      "subscription": "Subscription",
+      "garage": "Garage",
+      "car_wash": "Car wash",
+      "theft_damage": "Theft/Damage",
+      "other": "Other"
+    },
+    "recurring_options": {
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "semiannual": "Semiannual",
+      "yearly": "Yearly",
+      "biennial": "Biennial"
+    }
+  },
+  "refueling": {
+    "new": "New refueling",
+    "new_description": "Log a refueling.",
+    "edit": "Edit refueling",
+    "info": "Refueling details",
+    "info_description": "Fill data.",
+    "detail_title": "Refueling {{liters}} L",
+    "refueled_at": "Date",
+    "km": "Mileage",
+    "liters": "Liters",
+    "price_per_liter": "€/L",
+    "total_cost": "Total",
+    "fuel_type": "Fuel",
+    "full_tank": "Full tank",
+    "station": "Station",
+    "notes": "Notes",
+    "select_vehicle": "Select vehicle",
+    "created": "Refueling logged",
+    "updated": "Refueling updated",
+    "deleted": "Refueling deleted",
+    "delete": {
+      "title": "Delete refueling?",
+      "description": "Irreversible. Consumption calc will change."
+    },
+    "list": {
+      "description": "Refueling history for vehicle."
+    },
+    "empty": {
+      "title": "No refuelings",
+      "description": "Log the first fill-up."
+    },
+    "select_vehicle_first": {
+      "title": "Select a vehicle",
+      "description": "Choose a vehicle to log a refueling."
+    }
+  },
+  "vehicle": {
+    "new": "New vehicle",
+    "new_description": "Enter basic vehicle data.",
+    "edit": "Edit vehicle",
+    "info": "Vehicle info",
+    "info_description": "Vehicle base information.",
+    "name": "Name",
+    "brand": "Brand",
+    "model": "Model",
+    "year": "Year",
+    "license_plate": "License plate",
+    "vin": "VIN",
+    "type": "Vehicle type",
+    "fuel_type": "Fuel",
+    "secondary_fuel_type": "Secondary fuel",
+    "secondary_fuel_hint": "Only for bi-fuel vehicles (LPG, CNG, hybrid)",
+    "initial_km": "Initial km",
+    "current_km": "Current km",
+    "notes": "Notes",
+    "archived": "Archived",
+    "created": "Vehicle created",
+    "updated": "Vehicle updated",
+    "deleted": "Vehicle deleted",
+    "delete": {
+      "title": "Delete vehicle?",
+      "description": "This is irreversible. All related data (maintenance, refueling, etc.) will be deleted."
+    },
+    "list": {
+      "description": "Your registered vehicles."
+    },
+    "empty": {
+      "title": "No vehicles",
+      "description": "Add your first vehicle to get started."
+    },
+    "type_options": {
+      "car": "Car",
+      "motorcycle": "Motorcycle",
+      "van": "Van",
+      "camper": "Camper",
+      "boat": "Boat",
+      "truck": "Truck",
+      "bicycle": "Bicycle",
+      "scooter": "Scooter",
+      "trailer": "Trailer",
+      "tractor": "Tractor"
+    },
+    "fuel": {
+      "gasoline": "Gasoline",
+      "diesel": "Diesel",
+      "lpg": "LPG",
+      "cng": "CNG",
+      "electric": "Electric",
+      "hybrid": "Hybrid",
+      "hydrogen": "Hydrogen",
+      "ethanol": "Ethanol",
+      "biodiesel": "Biodiesel"
+    },
+    "share": {
+      "title": "Sharing",
+      "description": "Share this vehicle read-only with other organization members, picked from the list. Recipients can view it but not change it.",
+      "empty": "Not shared with anyone yet.",
+      "you": "you",
+      "invite_title": "Share read-only",
+      "role": {
+        "admin": "Owner",
+        "editor": "Editor",
+        "viewer": "Read-only"
+      },
+      "invite_submit": "Share",
+      "shared": "Vehicle shared",
+      "revoked": "Share revoked",
+      "revoke": "Revoke",
+      "revoke_title": "Revoke share?",
+      "revoke_description": "{{name}} will no longer have access to this vehicle.",
+      "select_people": "Select people",
+      "selected_count_one": "{{count}} person selected",
+      "selected_count_other": "{{count}} people selected",
+      "no_candidates": "No other organization member to share with: people join the organization by invitation (Settings → Members).",
+      "submit_many_one": "Share with {{count}} person",
+      "submit_many_other": "Share with {{count}} people"
+    },
+    "stats": {
+      "title": "Statistics",
+      "km_driven": "Distance driven",
+      "cost_per_km": "Cost per km",
+      "total_cost": "Total cost",
+      "refuelings": "Refuelings",
+      "maintenances": "Maintenance",
+      "expenses": "Expenses",
+      "consumption": "Average consumption",
+      "consumption_unknown": "Needs at least 2 full tanks"
+    }
+  },
+  "error_page": {
+    "back_home": "Back to home",
+    "not_found": {
+      "title": "Page not found",
+      "description": "The page you are looking for doesn't exist or has been moved."
+    },
+    "crash": {
+      "title": "Something went wrong",
+      "description": "An unexpected error occurred. Reload the page or try again.",
+      "reload": "Reload"
+    }
+  },
+  "attachment": {
+    "title": "Attachments",
+    "description": "Photos and documents — max 10 MB (JPG, PNG, WebP, PDF).",
+    "add": "Add",
+    "open": "Open {{name}}",
+    "uploaded": "Attachment uploaded",
+    "deleted": "Attachment deleted",
+    "empty": {
+      "title": "No attachments",
+      "description": "Add photos or documents."
+    },
+    "delete": {
+      "title": "Delete attachment?",
+      "description": "This action is irreversible."
+    }
+  },
+  "errors": {
+    "common": {
+      "invalid_date": "Invalid date",
+      "invalid_decimal": "Invalid number (e.g. 12.50)"
+    },
+    "mail": {
+      "not_configured": "SMTP not configured or disabled: save the configuration first",
+      "send_failed": "Send failed: check host, port and credentials"
+    },
+    "push": {
+      "not_configured": "Push notifications not configured: generate the VAPID keys first and enable them",
+      "no_subscription": "No subscribed device: enable notifications on this browser first",
+      "no_keys": "Generate a VAPID keypair before enabling notifications"
+    },
+    "settings": {
+      "instance_admin_required": "Only the instance administrator (the first registered user) can change these settings"
+    },
+    "auth": {
+      "invalid_credentials": "Invalid email or password",
+      "too_many_attempts": "Too many attempts, try again later",
+      "session_expired": "Session expired, please sign in again",
+      "email_taken": "Email already registered",
+      "invalid_current_password": "Your current password is incorrect",
+      "invalid_reset_token": "The reset link is expired or invalid",
+      "registration_closed": "Open registration is closed on this instance: ask the administrator for an invite"
+    },
+    "access": {
+      "org_admin_required": "Only organization admins can perform this action."
+    },
+    "refueling": {
+      "vehicle": {
+        "required": "Vehicle required"
+      },
+      "km": {
+        "required": "Enter mileage"
+      },
+      "fuel_type": {
+        "required": "Select fuel"
+      },
+      "not_found": "Refueling not found"
+    },
+    "expense": {
+      "vehicle": {
+        "required": "Vehicle required"
+      },
+      "category": {
+        "required": "Select category"
+      },
+      "description": {
+        "required": "Enter a description"
+      },
+      "recurring_period": {
+        "required": "Select frequency"
+      },
+      "not_found": "Expense not found"
+    },
+    "maintenance": {
+      "vehicle": {
+        "required": "Vehicle required"
+      },
+      "km": {
+        "required": "Enter mileage"
+      },
+      "type": {
+        "required": "Select type"
+      },
+      "category": {
+        "required": "Select category"
+      },
+      "description": {
+        "required": "Enter a description"
+      },
+      "not_found": "Maintenance not found"
+    },
+    "vehicle": {
+      "name": {
+        "required": "Enter a name"
+      },
+      "brand": {
+        "required": "Enter the brand"
+      },
+      "model": {
+        "required": "Enter the model"
+      },
+      "year": {
+        "required": "Enter the year",
+        "out_of_range": "Invalid year"
+      },
+      "type": {
+        "required": "Select vehicle type"
+      },
+      "fuel_type": {
+        "required": "Select fuel type"
+      },
+      "initial_km": {
+        "required": "Enter initial km"
+      },
+      "duplicate_fuel_type": "Secondary fuel must differ from primary",
+      "not_found": "Vehicle not found"
+    },
+    "upload": {
+      "file_required": "Select a file",
+      "invalid_file": "Invalid file",
+      "file_too_large": "File too large (max 10 MB)",
+      "mime_not_allowed": "Unsupported format (only JPG, PNG, WebP, PDF)",
+      "entity_required": "Missing reference"
+    },
+    "attachment": {
+      "not_found": "Attachment not found",
+      "file_missing": "File unavailable"
+    },
+    "query": {
+      "entity_required": "Missing parameters"
+    },
+    "entity": {
+      "not_found": "Resource not found"
+    },
+    "http": {
+      "401": "Unauthorized",
+      "403": "Access denied",
+      "404": "Not found",
+      "500": "Server error"
+    },
+    "validation_failed": "Check the entered data",
+    "unknown": "Unexpected error",
+    "account": {
+      "first_name": {
+        "required": "Enter your first name"
+      },
+      "last_name": {
+        "required": "Enter your last name"
+      },
+      "email": {
+        "required": "Enter your email",
+        "invalid": "Invalid email"
+      },
+      "current_password": {
+        "required": "Enter your current password"
+      },
+      "confirm_password": {
+        "required": "Confirm your password"
+      },
+      "password": {
+        "min": "At least 8 characters",
+        "mismatch": "Passwords do not match"
+      },
+      "org_name": {
+        "required": "Enter the organization name"
+      }
+    },
+    "share": {
+      "not_org_member": "Invalid selection: you can only share with organization members.",
+      "cannot_remove_owner": "The vehicle owner can't be removed.",
+      "not_found": "Share not found."
+    }
+  },
+  "account": {
+    "name": "Full name",
+    "first_name": "First name",
+    "last_name": "Last name",
+    "email": "Email",
+    "password": "Password",
+    "current_password": "Current password",
+    "new_password": "New password",
+    "confirm_password": "Confirm password",
+    "org_name": "Organization name",
+    "edit_profile": "Edit profile",
+    "edit_profile_description": "Update photo, first name, last name and email.",
+    "upload_photo": "Upload photo",
+    "remove_photo": "Remove",
+    "avatar_too_large": "Image too large (max 2MB)",
+    "avatar_invalid_type": "Unsupported format (JPG, PNG or WebP)",
+    "change_password": "Change password",
+    "change_password_description": "For security, enter your current password.",
+    "edit_organization": "Edit organization",
+    "edit_organization_description": "Rename your organization.",
+    "profile_updated": "Profile updated",
+    "password_updated": "Password updated",
+    "org_updated": "Organization updated"
+  },
+  "vehicle_picker": {
+    "title": "Choose a vehicle",
+    "add_vehicle": "Add vehicle",
+    "no_vehicles": {
+      "title": "No vehicles",
+      "description": "Add your first vehicle to get started."
+    }
+  }
+}

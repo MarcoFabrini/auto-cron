@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Node / Vite
+node_modules
+dist
+dist-ssr
+dev-dist
+*.local
+.vite/
+
+# Test coverage
+coverage
+
+# Editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Env locale
+.env
+.env.local
+.env.*.local
+
+# Type cache
+*.tsbuildinfo

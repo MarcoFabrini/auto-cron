@@ -1,0 +1,19 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - var/*
+        - vendor/*
+
+    # Symfony 7 + Doctrine plugin auto-attivati via phpstan/extension-installer
+    symfony:
+        containerXmlPath: var/cache/dev/App_KernelDevDebugContainer.xml
+        consoleApplicationLoader: tests/phpstan/console-application.php
+
+    # Tipi mancanti accettati nei test (factory pattern Foundry)
+    treatPhpDocTypesAsCertain: false
+
+includes:
+    - phpstan-baseline.neon

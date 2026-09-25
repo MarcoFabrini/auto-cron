@@ -1,0 +1,45 @@
+# see https://symfony.com/doc/current/reference/configuration/framework.html
+framework:
+    secret: '%env(APP_SECRET)%'
+
+    # API stateless: la session HTTP non serve, viene utilizzata solo nei test
+    session: false
+
+    http_method_override: false
+    handle_all_throwables: true
+
+    # Reverse proxy / CDN — necessario per audit log IP corretto, rate limiter per IP reale,
+    # e Symfony HttpFoundation client IP detection (#3.5).
+    # In dev: TRUSTED_PROXIES vuoto → comportamento standard.
+    # In prod dietro Cloudflare/nginx/LB: settare TRUSTED_PROXIES con CIDR del proxy.
+    #   Es. nginx locale: TRUSTED_PROXIES=127.0.0.1,REMOTE_ADDR
+    #   Es. Cloudflare:   TRUSTED_PROXIES=173.245.48.0/20,103.21.244.0/22,...
+    # Vedi: https://www.cloudflare.com/ips-v4/
+    trusted_proxies: '%env(default::TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-forwarded-prefix']
+
+    # Rate limiting
+    rate_limiter:
+        login:
+            policy: 'fixed_window'
+            limit: 5
+            interval: '1 minute'
+        # Dedicato a forgot-password: separato da login così uno spam non blocca l'altro.
+        forgot_password:
+            policy: 'fixed_window'
+            limit: 3
+            interval: '15 minutes'
+        api:
+            policy: 'sliding_window'
+            limit: 60
+            interval: '1 minute'
+        refresh:
+            policy: 'fixed_window'
+            limit: 30
+            interval: '1 minute'
+
+when@test:
+    framework:
+        test: true
+        session:
+            storage_factory_id: session.storage.factory.mock_file

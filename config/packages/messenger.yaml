@@ -1,0 +1,30 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        transports:
+            # Doctrine transport: riusa il DB applicativo (tabella messenger_messages),
+            # niente broker esterno. async/failed condividono la tabella, separati da queue_name.
+            async:
+                dsn: 'doctrine://default'
+                retry_strategy:
+                    max_retries: 3
+                    multiplier: 2
+                options:
+                    queue_name: async
+
+            failed:
+                dsn: 'doctrine://default'
+                options:
+                    queue_name: failed
+
+        routing:
+            # Notifiche scadenza veicolo → worker async (tabella messenger_messages)
+            App\Message\SendReminderNotificationMessage: async
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                async: 'in-memory://'
+                failed: 'in-memory://'

@@ -1,0 +1,23 @@
+# Flysystem storages — astrazione cross-backend.
+#
+# In self-host: adapter 'local' su volume Docker `/var/storage/uploads`.
+# In SaaS (futuro): swap a `aws_s3` cambiando solo questo file, niente codice da toccare.
+#
+# Documentazione: https://github.com/thephpleague/flysystem-bundle
+flysystem:
+    storages:
+        # Storage per gli allegati (foto, fatture PDF).
+        # Iniettabile via `League\Flysystem\FilesystemOperator $attachmentsStorage`.
+        attachments.storage:
+            adapter: 'local'
+            options:
+                directory: '%app.attachments_root%'
+
+# Quando passiamo a SaaS la sezione diventa:
+#
+#    attachments.storage:
+#        adapter: 'aws_s3'
+#        options:
+#            client: 'Aws\S3\S3Client'
+#            bucket: '%env(S3_BUCKET)%'
+#            prefix: 'attachments'

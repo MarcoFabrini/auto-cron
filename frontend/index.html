@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+
+    <!-- Mobile-first viewport. viewport-fit=cover supporta notch iPhone. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0" />
+
+    <!-- Theme color: dark slate per status bar mobile -->
+    <meta name="theme-color" content="#0f172a" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AutoCron" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- SEO base (overridden a livello pagina con react-helmet se necessario) -->
+    <title>AutoCron — Gestione veicoli</title>
+    <meta name="description" content="Manutenzioni, rifornimenti, spese e scadenze dei tuoi veicoli. Self-hosted, open source." />
+
+    <!-- Prevent telephone number auto-linking on iOS -->
+    <meta name="format-detection" content="telephone=no" />
+  </head>
+  <body class="bg-slate-50 dark:bg-slate-950">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+# Cache app di default (filesystem, nessun servizio esterno necessario).
+# Nei test: adapter in-memory — il DB viene ricreato tra test, ma la cache su
+# filesystem no. Senza questo override il rate limiter (usa cache.app) e altri
+# stati cachati resterebbero stale tra un test e l'altro.
+when@test:
+    framework:
+        cache:
+            app: cache.adapter.array

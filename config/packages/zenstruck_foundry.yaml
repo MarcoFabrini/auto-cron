@@ -1,0 +1,18 @@
+when@dev: &dev
+    # See full configuration: https://symfony.com/bundles/ZenstruckFoundryBundle/current/index.html#full-default-bundle-configuration
+    zenstruck_foundry:
+        persistence:
+            # Flush only once per call of `PersistentObjectFactory::create()`
+            flush_once: true
+
+    # Le factory di test possono iniettare service del container
+    # (es. UserFactory inietta UserPasswordHasherInterface per hashare la password).
+    # Vanno quindi registrate come servizi autowired.
+    services:
+        App\Tests\Factory\:
+            resource: '%kernel.project_dir%/tests/Factory/'
+            autowire: true
+            autoconfigure: true
+            public: true
+
+when@test: *dev
