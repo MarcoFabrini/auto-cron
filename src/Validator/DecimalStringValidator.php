@@ -17,7 +17,9 @@ final class DecimalStringValidator extends ConstraintValidator
             throw new UnexpectedTypeException($constraint, DecimalString::class);
         }
 
-        if ($value === null || $value === '') {
+        // null = campo assente/opzionale. La stringa vuota NON è un decimale: finirebbe
+        // in una colonna NUMERIC e darebbe un 500.
+        if ($value === null) {
             return;
         }
 
@@ -25,8 +27,14 @@ final class DecimalStringValidator extends ConstraintValidator
             throw new UnexpectedValueException($value, 'string');
         }
 
-        $pattern = sprintf('/^\d+(\.\d{1,%d})?$/', $constraint->maxDecimals);
+        $pattern = sprintf('/^(\d{1,%d})(\.\d{1,%d})?$/', $constraint->maxIntegerDigits, $constraint->maxDecimals);
         if (preg_match($pattern, $value) !== 1) {
+            $this->context->buildViolation($constraint->message)->addViolation();
+
+            return;
+        }
+
+        if (!$constraint->allowZero && trim($value, '0.') === '') {
             $this->context->buildViolation($constraint->message)->addViolation();
         }
     }

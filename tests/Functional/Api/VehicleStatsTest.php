@@ -209,6 +209,35 @@ final class VehicleStatsTest extends ApiTestCase
         self::assertNull($body['consumption']['diesel'], 'Con un solo full tank, consumption deve essere null');
     }
 
+    public function testBiFuelIntervalsWithTheOtherFuelInBetweenAreDiscarded(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne([
+            'organization' => $org,
+            'fuelType' => FuelType::GASOLINE,
+            'secondaryFuelType' => FuelType::LPG,
+            'initialKm' => 10000,
+        ]);
+        $fill = static fn (string $date, int $km, string $liters, FuelType $fuel) => RefuelingFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'refueledAt' => new \DateTimeImmutable($date),
+            'km' => $km, 'liters' => $liters, 'pricePerLiter' => '1.5000',
+            'fuelType' => $fuel, 'fullTank' => true,
+        ]);
+
+        $fill('2026-01-01', 10000, '30.000', FuelType::GASOLINE);
+        $fill('2026-01-10', 10100, '20.000', FuelType::LPG);       // GPL in mezzo: intervallo benzina "sporco"
+        $fill('2026-01-20', 10500, '30.000', FuelType::GASOLINE);  // 500 km NON tutti a benzina
+        $fill('2026-02-01', 10900, '40.000', FuelType::GASOLINE);  // intervallo pulito: 400 km / 40 L = 10 km/l
+
+        $this->jsonRequest('GET', '/api/vehicles/'.$vehicle->getId().'/stats', accessToken: $token);
+
+        $body = $this->jsonBody();
+        // Senza lo scarto: (500+400)/(30+40) = 12,86. Con lo scarto conta solo l'ultimo intervallo.
+        self::assertEqualsWithDelta(10.0, $body['consumption']['gasoline'], 0.05);
+        self::assertNull($body['consumption']['lpg'], 'un solo pieno GPL: nessun intervallo');
+    }
+
     public function testConsumptionAccountsForPartialRefuelingsBetweenFullTanks(): void
     {
         [, $org, $token] = $this->createAuthenticatedUser();

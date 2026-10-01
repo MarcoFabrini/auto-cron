@@ -7,12 +7,15 @@ import { EmptyState, ReminderCard, VehicleScopedList } from '@/components/featur
 import { useReminders } from '@/hooks/useReminders';
 import { useVehicleIdParam } from '@/hooks/useVehicleIdParam';
 import { useVehicleName } from '@/hooks/useVehicleName';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 
 export function ReminderListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { vehicleId, setParams } = useVehicleIdParam();
   const vehicleName = useVehicleName(vehicleId);
+  // Veicolo condiviso in sola lettura: nessun "nuovo".
+  const canEdit = useCanEditVehicle(vehicleId);
   const { data, isLoading, error } = useReminders(vehicleId);
 
   // Link condiviso: nell'header è nascosto su mobile (c'è il "+" della barra), nello stato vuoto no.
@@ -29,7 +32,7 @@ export function ReminderListPage() {
         title={vehicleId > 0 ? vehicleName : undefined}
         onBack={vehicleId > 0 ? () => navigate(`/vehicles/${vehicleId}`) : undefined}
         action={
-          vehicleId > 0 && (
+          vehicleId > 0 && canEdit && (
             <Button asChild className="hidden md:inline-flex">
               {newLink}
             </Button>
@@ -48,9 +51,7 @@ export function ReminderListPage() {
             Icon={Bell}
             title={t('reminder.empty.title')}
             description={t('reminder.empty.description')}
-            action={
-              <Button asChild>{newLink}</Button>
-            }
+            action={canEdit ? <Button asChild>{newLink}</Button> : undefined}
           />
         }
         renderItem={(r) => <ReminderCard key={r.id} reminder={r} />}

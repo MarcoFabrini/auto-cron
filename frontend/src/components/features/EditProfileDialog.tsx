@@ -49,16 +49,18 @@ export function EditProfileDialog({ open, onOpenChange, user }: EditProfileDialo
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { firstName: user.firstName, lastName: user.lastName, email: user.email },
+    defaultValues: { firstName: user.firstName, lastName: user.lastName, email: user.email, currentPassword: '' },
   });
 
   useEffect(() => {
     if (open) {
-      form.reset({ firstName: user.firstName, lastName: user.lastName, email: user.email });
+      form.reset({ firstName: user.firstName, lastName: user.lastName, email: user.email, currentPassword: '' });
     }
   }, [open, user, form]);
 
   const errors = form.formState.errors;
+  const emailChanged =
+    (form.watch('email') ?? '').trim().toLowerCase() !== user.email.toLowerCase();
   const tErr = useFieldErrorMessage();
   const avatarBusy = uploadAvatar.isPending || deleteAvatar.isPending;
 
@@ -77,9 +79,13 @@ export function EditProfileDialog({ open, onOpenChange, user }: EditProfileDialo
     });
   }
 
-  function submit(data: ProfileFormData) {
+  function submit({ currentPassword, ...data }: ProfileFormData) {
+    if (emailChanged && !currentPassword) {
+      form.setError('currentPassword', { message: 'account.current_password.required' });
+      return;
+    }
     mutation.mutate(
-      { locale: user.locale, ...data },
+      { locale: user.locale, ...data, ...(emailChanged ? { currentPassword } : {}) },
       {
         onSuccess: () => {
           toast({ title: t('account.profile_updated'), variant: 'success' });
@@ -88,6 +94,8 @@ export function EditProfileDialog({ open, onOpenChange, user }: EditProfileDialo
         onError: (e) => {
           if (e instanceof ApiError && e.title === 'auth.email_taken') {
             form.setError('email', { message: 'auth.email_taken' });
+          } else if (e instanceof ApiError && e.title === 'auth.invalid_current_password') {
+            form.setError('currentPassword', { message: 'auth.invalid_current_password' });
           } else if (e instanceof ApiError && e.errors) {
             e.errors.forEach((err) =>
               form.setError(err.field as keyof ProfileFormData, { message: err.message }),
@@ -174,6 +182,25 @@ export function EditProfileDialog({ open, onOpenChange, user }: EditProfileDialo
               />
             )}
           </FormField>
+
+          {emailChanged && (
+            <FormField
+              label={t('account.current_password')}
+              error={tErr(errors.currentPassword?.message)}
+              hint={t('account.email_change_hint')}
+              required
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  type="password"
+                  autoComplete="current-password"
+                  invalid={!!errors.currentPassword}
+                  {...form.register('currentPassword')}
+                />
+              )}
+            </FormField>
+          )}
 
           <DialogFormActions isPending={mutation.isPending} onCancel={() => onOpenChange(false)} />
         </form>

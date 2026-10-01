@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use App\Entity\Organization;
+use App\Entity\User;
+use App\Entity\Vehicle;
 use App\Tests\Factory\ReminderFactory;
 use App\Tests\Factory\VehicleFactory;
+use App\Tests\Factory\VehicleShareFactory;
 use App\Tests\Support\ApiTestCase;
 
 final class ReminderControllerTest extends ApiTestCase
@@ -26,6 +30,20 @@ final class ReminderControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(201);
         self::assertSame('Revisione biennale', $this->jsonBody()['description']);
         self::assertNull($this->jsonBody()['completedAt']);
+    }
+
+    public function testCreateReminderWithoutAnyDueIsRejected(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+
+        $this->jsonRequest('POST', '/api/reminders', [
+            'vehicleId' => $vehicle->getId(),
+            'type' => 'custom',
+            'description' => 'Senza scadenza',
+        ], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
     }
 
     public function testCompleteEndpointMarksAsCompleted(): void
@@ -57,11 +75,11 @@ final class ReminderControllerTest extends ApiTestCase
         self::assertCount(2, $this->jsonBody());
     }
 
-    public function testUpcomingAggregatesAcrossVehiclesOfTheOrganization(): void
+    public function testUpcomingAggregatesAcrossTheOwnedVehicles(): void
     {
-        [, $org, $token] = $this->createAuthenticatedUser();
-        $vehicleA = VehicleFactory::createOne(['organization' => $org]);
-        $vehicleB = VehicleFactory::createOne(['organization' => $org]);
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicleA = $this->ownedVehicle($user, $org);
+        $vehicleB = $this->ownedVehicle($user, $org);
 
         $overdue = ReminderFactory::createOne([
             'organization' => $org, 'vehicle' => $vehicleA,
@@ -101,10 +119,38 @@ final class ReminderControllerTest extends ApiTestCase
         self::assertSame([], $this->jsonBody());
     }
 
+    public function testUpcomingOnlyCoversOwnedVehiclesEvenForTheOrgOwner(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser(); // owner dell'org: vede tutti i veicoli
+        $mine = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $this->ownedVehicle($user, $org),
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+        // Veicolo di un altro membro: l'owner dell'org lo vede, ma non è suo.
+        $othersVehicle = VehicleFactory::createOne(['organization' => $org]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $othersVehicle]);
+        ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $othersVehicle,
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+        // Veicolo condiviso con lui in sola lettura: nemmeno questo.
+        $sharedVehicle = VehicleFactory::createOne(['organization' => $org]);
+        VehicleShareFactory::createOne(['vehicle' => $sharedVehicle, 'user' => $user]);
+        ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $sharedVehicle,
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+
+        $this->jsonRequest('GET', '/api/reminders/upcoming', accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$mine->getId()], array_column($this->jsonBody(), 'id'));
+    }
+
     public function testUpcomingRespectsDaysAndLimitParams(): void
     {
-        [, $org, $token] = $this->createAuthenticatedUser();
-        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
         ReminderFactory::createOne([
             'organization' => $org, 'vehicle' => $vehicle,
             'dueDate' => new \DateTimeImmutable('+50 days'),
@@ -118,5 +164,13 @@ final class ReminderControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         self::assertCount(1, $this->jsonBody());
+    }
+
+    private function ownedVehicle(User $owner, Organization $org): Vehicle
+    {
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $vehicle, 'user' => $owner]);
+
+        return $vehicle;
     }
 }

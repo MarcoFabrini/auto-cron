@@ -30,7 +30,6 @@ final class DecimalStringValidatorTest extends ConstraintValidatorTestCase
         yield 'integer' => ['120', 2];
         yield 'exact decimals' => ['120.50', 2];
         yield 'fewer decimals than max' => ['120.5', 2];
-        yield 'zero' => ['0', 2];
         yield 'four decimals allowed' => ['1.2345', 4];
     }
 
@@ -49,14 +48,38 @@ final class DecimalStringValidatorTest extends ConstraintValidatorTestCase
         yield 'comma separator' => ['120,50', 2];
         yield 'not numeric' => ['abc', 2];
         yield 'thousands separator' => ['1,200.50', 2];
+        yield 'zero by default' => ['0', 2];
+        yield 'zero with decimals' => ['0.00', 2];
+        yield 'empty string' => ['', 2];
     }
 
-    public function testNullAndEmptyStringPassThrough(): void
+    public function testZeroIsAllowedWhenExplicitlyEnabled(): void
+    {
+        $this->validator->validate('0', new DecimalString(allowZero: true));
+        $this->assertNoViolation();
+    }
+
+    public function testNullIsSkippedButEmptyStringIsNotADecimal(): void
     {
         $this->validator->validate(null, new DecimalString());
         $this->assertNoViolation();
 
-        $this->validator->validate('', new DecimalString());
-        $this->assertNoViolation();
+        $this->validator->validate('', new DecimalString(message: 'validation.amount_format'));
+        $this->buildViolation('validation.amount_format')->assertRaised();
+    }
+
+    #[DataProvider('tooLargeProvider')]
+    public function testValuesLargerThanTheColumnAreRejected(string $value, int $maxIntegerDigits): void
+    {
+        $this->validator->validate($value, new DecimalString(maxIntegerDigits: $maxIntegerDigits, message: 'validation.amount_format'));
+        $this->buildViolation('validation.amount_format')->assertRaised();
+    }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function tooLargeProvider(): iterable
+    {
+        yield 'liters over NUMERIC(8,3)' => ['100000.000', 5];
+        yield 'price over NUMERIC(6,4)' => ['100.0000', 2];
+        yield 'amount over NUMERIC(10,2)' => ['123456789.00', 8];
     }
 }

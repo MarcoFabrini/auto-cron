@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Service;
 
+use App\Entity\OrganizationInvitation;
 use App\Entity\PushSubscription;
 use App\Entity\RefreshToken;
 use App\Entity\User;
@@ -103,6 +104,32 @@ final class GdprDeleteServiceTest extends KernelTestCase
 
         self::assertSame(1, $summary['deleted_orgs']);
         self::assertNull($this->em()->find(\App\Entity\Organization::class, $orgId));
+    }
+
+    public function testAnonymizeClearsAvatarAndRemovesInvitationsToOldEmail(): void
+    {
+        $user = UserFactory::createOne(['email' => 'forget-me@test.it']);
+        $user->setAvatarPath('avatar/some-file');
+        $org = OrganizationFactory::createOne(['slug' => 'gdpr-invite-org']);
+        OrganizationMemberFactory::createOne(['user' => $user, 'organization' => $org, 'role' => OrgRole::OWNER]);
+        $other = OrganizationFactory::createOne(['slug' => 'other-org']);
+        $invitation = new OrganizationInvitation(
+            $other,
+            'Forget-Me@test.it',
+            OrgRole::MEMBER,
+            hash('sha256', 'raw'),
+            new \DateTimeImmutable('+7 days'),
+            null,
+        );
+        $this->em()->persist($invitation);
+        $this->em()->flush();
+        $invitationId = $invitation->getId();
+
+        $this->service()->anonymize($user);
+
+        $this->em()->clear();
+        self::assertNull($this->em()->find(User::class, $user->getId())?->getAvatarPath());
+        self::assertNull($this->em()->find(OrganizationInvitation::class, $invitationId));
     }
 
     public function testAnonymizeBlockedWhenSoleOwnerWithOtherMembers(): void

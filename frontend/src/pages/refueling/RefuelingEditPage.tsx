@@ -4,6 +4,7 @@ import { Alert, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/layout';
 import { RefuelingForm } from '@/components/features';
 import { useRefueling, useUpdateRefueling } from '@/hooks/useRefuelings';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 
@@ -16,6 +17,7 @@ export function RefuelingEditPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useRefueling(refuelingId);
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
   const updateMutation = useUpdateRefueling(refuelingId);
 
   if (isLoading) {
@@ -28,6 +30,8 @@ export function RefuelingEditPage() {
   }
   if (error) return <Alert variant="error">{errorMessage(error)}</Alert>;
   if (!data) return null;
+  // Link diretto a un record di un veicolo condiviso in sola lettura: niente form (darebbe 403).
+  if (canEdit === false) return <Alert variant="warning">{t('vehicle.read_only_no_changes')}</Alert>;
 
   return (
     <div className="space-y-6">

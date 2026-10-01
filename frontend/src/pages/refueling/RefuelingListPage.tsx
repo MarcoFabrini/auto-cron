@@ -7,12 +7,15 @@ import { EmptyState, RefuelingCard, VehicleScopedList } from '@/components/featu
 import { useRefuelings } from '@/hooks/useRefuelings';
 import { useVehicleIdParam } from '@/hooks/useVehicleIdParam';
 import { useVehicleName } from '@/hooks/useVehicleName';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 
 export function RefuelingListPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { vehicleId, setParams } = useVehicleIdParam();
   const vehicleName = useVehicleName(vehicleId);
+  // Veicolo condiviso in sola lettura: nessun "nuovo".
+  const canEdit = useCanEditVehicle(vehicleId);
   const { data, isLoading, error } = useRefuelings(vehicleId);
 
   // Link condiviso: nell'header è nascosto su mobile (c'è il "+" della barra), nello stato vuoto no.
@@ -29,7 +32,7 @@ export function RefuelingListPage() {
         title={vehicleId > 0 ? vehicleName : undefined}
         onBack={vehicleId > 0 ? () => navigate(`/vehicles/${vehicleId}`) : undefined}
         action={
-          vehicleId > 0 && (
+          vehicleId > 0 && canEdit && (
             <Button asChild className="hidden md:inline-flex">
               {newLink}
             </Button>
@@ -48,9 +51,7 @@ export function RefuelingListPage() {
             Icon={Fuel}
             title={t('refueling.empty.title')}
             description={t('refueling.empty.description')}
-            action={
-              <Button asChild>{newLink}</Button>
-            }
+            action={canEdit ? <Button asChild>{newLink}</Button> : undefined}
           />
         }
         renderItem={(r) => <RefuelingCard key={r.id} refueling={r} />}

@@ -46,6 +46,14 @@ final class BackupCreateCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+
+        // Validato prima di creare i file: 0 (o un valore non numerico) farebbe cancellare anche il backup appena fatto.
+        $retentionDays = (int) $input->getOption('retention-days');
+        if ($retentionDays < 1) {
+            $io->error('--retention-days deve essere un intero >= 1.');
+
+            return Command::INVALID;
+        }
         $fs = new Filesystem();
 
         if (!$fs->exists($this->backupsDir)) {
@@ -82,6 +90,7 @@ final class BackupCreateCommand extends Command
             timeout: 600,
         );
         $this->streamGzipped($dumpProc, $dbDumpPath);
+        @chmod($dbDumpPath, 0600); // contiene dati personali: leggibile solo dal proprietario
         $io->success("DB dump → $dbDumpPath (".$this->humanSize(filesize($dbDumpPath) ?: 0).')');
 
         // 2. Uploads tarball
@@ -93,7 +102,14 @@ final class BackupCreateCommand extends Command
                     escapeshellarg($uploadsTarPath),
                     escapeshellarg($this->attachmentsRoot),
                 );
-                Process::fromShellCommandline($tarCmd, timeout: 600)->mustRun();
+                try {
+                    Process::fromShellCommandline($tarCmd, timeout: 600)->mustRun();
+                } catch (\Throwable $e) {
+                    // Un tar troncato non deve restare (la retention lo conserverebbe come se fosse valido).
+                    @unlink($uploadsTarPath);
+                    throw $e;
+                }
+                @chmod($uploadsTarPath, 0600);
                 $io->success("Uploads tar → $uploadsTarPath (".$this->humanSize(filesize($uploadsTarPath) ?: 0).')');
             } else {
                 $io->info('Uploads dir vuota o inesistente, skip tar.');
@@ -101,7 +117,6 @@ final class BackupCreateCommand extends Command
         }
 
         // 3. Retention cleanup
-        $retentionDays = (int) $input->getOption('retention-days');
         $deleted = $this->pruneOldBackups($retentionDays);
         if ($deleted > 0) {
             $io->info("Retention: rimossi $deleted file backup più vecchi di $retentionDays giorni.");

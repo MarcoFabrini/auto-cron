@@ -35,6 +35,10 @@ export function deleteVehicle(id: number) {
   return authFetch<void>(`/api/vehicles/${id}`, { method: 'DELETE' });
 }
 
+export function unarchiveVehicle(id: number) {
+  return authFetch<Vehicle>(`/api/vehicles/${id}/unarchive`, { method: 'POST' });
+}
+
 export function archiveVehicle(id: number) {
   return authFetch<Vehicle>(`/api/vehicles/${id}/archive`, { method: 'POST' });
 }

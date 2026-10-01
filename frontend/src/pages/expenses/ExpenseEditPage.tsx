@@ -4,6 +4,7 @@ import { Alert, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/layout';
 import { ExpenseForm } from '@/components/features';
 import { useExpense, useUpdateExpense } from '@/hooks/useExpenses';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 
@@ -16,6 +17,7 @@ export function ExpenseEditPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useExpense(expenseId);
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
   const updateMutation = useUpdateExpense(expenseId);
 
   if (isLoading) {
@@ -28,6 +30,8 @@ export function ExpenseEditPage() {
   }
   if (error) return <Alert variant="error">{errorMessage(error)}</Alert>;
   if (!data) return null;
+  // Link diretto a un record di un veicolo condiviso in sola lettura: niente form (darebbe 403).
+  if (canEdit === false) return <Alert variant="warning">{t('vehicle.read_only_no_changes')}</Alert>;
 
   return (
     <div className="space-y-6">

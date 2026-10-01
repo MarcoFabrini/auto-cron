@@ -7,6 +7,7 @@ import { EmptyState, MaintenanceCard, VehicleScopedList } from '@/components/fea
 import { useMaintenances } from '@/hooks/useMaintenances';
 import { useVehicleIdParam } from '@/hooks/useVehicleIdParam';
 import { useVehicleName } from '@/hooks/useVehicleName';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 
 /**
  * MaintenanceListPage — scelta veicolo via griglia di card (VehiclePicker);
@@ -17,6 +18,8 @@ export function MaintenanceListPage() {
   const navigate = useNavigate();
   const { vehicleId, setParams } = useVehicleIdParam();
   const vehicleName = useVehicleName(vehicleId);
+  // Veicolo condiviso in sola lettura: nessun "nuovo".
+  const canEdit = useCanEditVehicle(vehicleId);
   const { data, isLoading, error } = useMaintenances(vehicleId);
 
   // Link condiviso: nell'header è nascosto su mobile (c'è il "+" della barra), nello stato vuoto no.
@@ -33,7 +36,7 @@ export function MaintenanceListPage() {
         title={vehicleId > 0 ? vehicleName : undefined}
         onBack={vehicleId > 0 ? () => navigate(`/vehicles/${vehicleId}`) : undefined}
         action={
-          vehicleId > 0 && (
+          vehicleId > 0 && canEdit && (
             <Button asChild className="hidden md:inline-flex">
               {newLink}
             </Button>
@@ -52,9 +55,7 @@ export function MaintenanceListPage() {
             Icon={Wrench}
             title={t('maintenance.empty.title')}
             description={t('maintenance.empty.description')}
-            action={
-              <Button asChild>{newLink}</Button>
-            }
+            action={canEdit ? <Button asChild>{newLink}</Button> : undefined}
           />
         }
         renderItem={(m) => <MaintenanceCard key={m.id} maintenance={m} />}

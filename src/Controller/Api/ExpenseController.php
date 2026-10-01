@@ -10,6 +10,7 @@ use App\Repository\ExpenseRepository;
 use App\Repository\VehicleRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentCleaner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -33,6 +34,7 @@ final class ExpenseController extends AbstractController
         private readonly ExpenseRepository $repo,
         private readonly VehicleRepository $vehicleRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
+        private readonly AttachmentCleaner $attachmentCleaner,
         private readonly SerializerInterface $serializer,
     ) {
     }
@@ -61,7 +63,7 @@ final class ExpenseController extends AbstractController
         }
         $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
 
-        $page = max(1, (int) $request->query->get('page', 1));
+        $page = min(100_000, max(1, (int) $request->query->get('page', 1)));
         $limit = min(100, max(1, (int) $request->query->get('limit', 20)));
 
         return $this->jsonGroups($this->repo->findByVehiclePaginated($vehicle, $page, $limit), ['expense:list', 'vehicle:nested']);
@@ -149,8 +151,7 @@ final class ExpenseController extends AbstractController
     {
         $e = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $e);
-        $this->em->remove($e);
-        $this->em->flush();
+        $this->attachmentCleaner->removeRecord($e);
         return new JsonResponse(null, 204);
     }
 

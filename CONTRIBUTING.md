@@ -38,6 +38,14 @@ lando phpunit
 
 `compose.yml` is only for deployment, use Lando for development.
 
+**Faster backend tests.** The test suite resets the schema for every test, which is slow on a database stored on a bind-mounted volume (tens of seconds per test). Run it against a throw-away MariaDB in memory:
+
+```bash
+docker run -d --name autocron-testdb --network autocron_default --network-alias testdb --tmpfs /var/lib/mysql \
+  -e MARIADB_ROOT_PASSWORD=root mariadb:11.4 --innodb-flush-log-at-trx-commit=0 --skip-innodb-doublewrite
+lando ssh -s appserver -c 'cd /app && XDEBUG_MODE=off APP_ENV=test DATABASE_URL="mysql://root:root@testdb:3306/autocron?serverVersion=mariadb-11.4.0&charset=utf8mb4" php bin/phpunit'
+```
+
 ## Conventions
 
 ### Backend
@@ -126,6 +134,14 @@ lando phpunit
 - Email di sviluppo: https://mail.autocron.lndo.site
 
 `compose.yml` serve solo per il deploy, per sviluppare usa Lando.
+
+**Test backend più veloci.** La suite riazzera lo schema a ogni test: su un database in un volume montato è lento (decine di secondi a test). Lanciala su un MariaDB usa-e-getta in memoria:
+
+```bash
+docker run -d --name autocron-testdb --network autocron_default --network-alias testdb --tmpfs /var/lib/mysql \
+  -e MARIADB_ROOT_PASSWORD=root mariadb:11.4 --innodb-flush-log-at-trx-commit=0 --skip-innodb-doublewrite
+lando ssh -s appserver -c 'cd /app && XDEBUG_MODE=off APP_ENV=test DATABASE_URL="mysql://root:root@testdb:3306/autocron?serverVersion=mariadb-11.4.0&charset=utf8mb4" php bin/phpunit'
+```
 
 ## Convenzioni
 

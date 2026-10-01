@@ -23,6 +23,8 @@ final class VehicleVoter extends Voter
     public const VIEW = 'VEHICLE_VIEW';
     public const EDIT = 'VEHICLE_EDIT';
     public const DELETE = 'VEHICLE_DELETE';
+    /** Gestire le condivisioni: solo proprietario/admin, non un editor né un viewer. */
+    public const SHARE = 'VEHICLE_SHARE';
 
     public function __construct(private readonly VehicleAccessChecker $access)
     {
@@ -30,7 +32,7 @@ final class VehicleVoter extends Voter
 
     protected function supports(string $attribute, mixed $subject): bool
     {
-        if (!in_array($attribute, [self::VIEW, self::EDIT, self::DELETE], true)) {
+        if (!in_array($attribute, [self::VIEW, self::EDIT, self::DELETE, self::SHARE], true)) {
             return false;
         }
         return $subject instanceof Vehicle || $subject instanceof VehicleScoped;
@@ -49,6 +51,7 @@ final class VehicleVoter extends Voter
             self::VIEW => $this->access->canView($user, $vehicle),
             self::EDIT => $this->access->canEdit($user, $vehicle),
             self::DELETE => $this->access->canDelete($user, $vehicle),
+            self::SHARE => $this->access->canShare($user, $vehicle),
             default => false,
         };
     }

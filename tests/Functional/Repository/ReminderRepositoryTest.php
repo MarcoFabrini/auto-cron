@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Repository;
 
+use App\Entity\Organization;
 use App\Entity\Reminder;
+use App\Entity\User;
+use App\Entity\Vehicle;
 use App\Enum\ReminderUrgency;
 use App\Repository\ReminderRepository;
 use App\Tests\Factory\ReminderFactory;
+use App\Tests\Factory\UserFactory;
 use App\Tests\Factory\VehicleFactory;
+use App\Tests\Factory\VehicleShareFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Zenstruck\Foundry\Test\Factories;
@@ -60,6 +65,14 @@ final class ReminderRepositoryTest extends KernelTestCase
         self::assertSame([], $this->candidateIds());
     }
 
+    public function testExcludesRemindersOfArchivedVehicles(): void
+    {
+        $archived = VehicleFactory::createOne(['archivedAt' => new \DateTimeImmutable('-1 day')]);
+        ReminderFactory::createOne(['vehicle' => $archived, 'organization' => $archived->getOrganization(), 'dueDate' => new \DateTimeImmutable('+3 days')]);
+
+        self::assertSame([], $this->candidateIds());
+    }
+
     public function testKeepsSoonNotifiedButDropsOverdueNotified(): void
     {
         $soonNotified = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('+3 days')]);
@@ -94,10 +107,9 @@ final class ReminderRepositoryTest extends KernelTestCase
         self::assertFalse($stillLazy, 'Vehicle deve arrivare già caricato dal fetch-join, non lazy (N+1)');
     }
 
-    public function testFindUpcomingForOrganizationOrdersByDueDateAndRespectsWindow(): void
+    public function testFindUpcomingForOwnerOrdersByDueDateAndRespectsWindow(): void
     {
-        $vehicle = VehicleFactory::createOne();
-        $org = $vehicle->getOrganization();
+        [$vehicle, $org, $owner] = $this->ownedVehicle();
 
         $far = ReminderFactory::createOne([
             'organization' => $org, 'vehicle' => $vehicle,
@@ -112,7 +124,7 @@ final class ReminderRepositoryTest extends KernelTestCase
             'dueDate' => new \DateTimeImmutable('+5 days'),
         ]);
 
-        $result = $this->repo->findUpcomingForOrganization($org, 30, 10);
+        $result = $this->repo->findUpcomingForOwner($org, $owner, 30, 10);
 
         self::assertSame(
             [$overdue->getId(), $soon->getId()],
@@ -121,10 +133,9 @@ final class ReminderRepositoryTest extends KernelTestCase
         self::assertNotContains($far->getId(), array_map(static fn (Reminder $r) => $r->getId(), $result));
     }
 
-    public function testFindUpcomingForOrganizationExcludesOtherOrgsCompletedAndKmOnly(): void
+    public function testFindUpcomingForOwnerExcludesOtherOrgsCompletedAndKmOnly(): void
     {
-        $vehicle = VehicleFactory::createOne();
-        $org = $vehicle->getOrganization();
+        [$vehicle, $org, $owner] = $this->ownedVehicle();
 
         $mine = ReminderFactory::createOne([
             'organization' => $org, 'vehicle' => $vehicle,
@@ -144,15 +155,14 @@ final class ReminderRepositoryTest extends KernelTestCase
             'dueDate' => null, 'dueKm' => 120_000,
         ]);
 
-        $result = $this->repo->findUpcomingForOrganization($org, 30, 10);
+        $result = $this->repo->findUpcomingForOwner($org, $owner, 30, 10);
 
         self::assertSame([$mine->getId()], array_map(static fn (Reminder $r) => $r->getId(), $result));
     }
 
-    public function testFindUpcomingForOrganizationRespectsLimit(): void
+    public function testFindUpcomingForOwnerRespectsLimit(): void
     {
-        $vehicle = VehicleFactory::createOne();
-        $org = $vehicle->getOrganization();
+        [$vehicle, $org, $owner] = $this->ownedVehicle();
 
         for ($i = 1; $i <= 3; $i++) {
             ReminderFactory::createOne([
@@ -161,6 +171,44 @@ final class ReminderRepositoryTest extends KernelTestCase
             ]);
         }
 
-        self::assertCount(2, $this->repo->findUpcomingForOrganization($org, 30, 2));
+        self::assertCount(2, $this->repo->findUpcomingForOwner($org, $owner, 30, 2));
+    }
+
+    public function testFindUpcomingForOwnerSkipsSharedAndOtherMembersVehicles(): void
+    {
+        [$vehicle, $org, $owner] = $this->ownedVehicle();
+        $mine = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+
+        // Veicolo di un altro membro, condiviso con $owner in sola lettura: non è suo.
+        $sharedVehicle = VehicleFactory::createOne(['organization' => $org]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $sharedVehicle]);
+        VehicleShareFactory::createOne(['vehicle' => $sharedVehicle, 'user' => $owner]);
+        ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $sharedVehicle,
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+        // Veicolo dell'org senza alcun legame con $owner.
+        $otherVehicle = VehicleFactory::createOne(['organization' => $org]);
+        ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $otherVehicle,
+            'dueDate' => new \DateTimeImmutable('+5 days'),
+        ]);
+
+        $result = $this->repo->findUpcomingForOwner($org, $owner, 30, 10);
+
+        self::assertSame([$mine->getId()], array_map(static fn (Reminder $r) => $r->getId(), $result));
+    }
+
+    /** @return array{0: Vehicle, 1: Organization, 2: User} */
+    private function ownedVehicle(): array
+    {
+        $vehicle = VehicleFactory::createOne();
+        $owner = UserFactory::createOne();
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $vehicle, 'user' => $owner]);
+
+        return [$vehicle, $vehicle->getOrganization(), $owner];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use App\Enum\FuelType;
 use App\Tests\Factory\RefuelingFactory;
 use App\Tests\Factory\VehicleFactory;
@@ -36,6 +37,40 @@ final class RefuelingControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(201);
         // total_cost è una GENERATED column del DB: 40 × 1.8 = 72.00
         self::assertSame('72.00', $this->jsonBody()['totalCost']);
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    #[DataProvider('invalidAmounts')]
+    public function testCreateRefuelingRejectsInvalidAmounts(array $overrides): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+
+        $this->jsonRequest('POST', '/api/refuelings', [
+            'vehicleId' => $vehicle->getId(),
+            'refueledAt' => '2026-05-01',
+            'km' => 50000,
+            'liters' => '40.000',
+            'pricePerLiter' => '1.8000',
+            ...$overrides,
+        ], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function invalidAmounts(): iterable
+    {
+        yield 'zero liters' => [['liters' => '0']];
+        yield 'empty liters' => [['liters' => '']];
+        yield 'liters over the column' => [['liters' => '999999.000']];
+        yield 'zero price' => [['pricePerLiter' => '0']];
+        yield 'price over the column' => [['pricePerLiter' => '999.0000']];
+        yield 'absurd km' => [['km' => 2_000_000_000]];
     }
 
     public function testListByVehiclePaginated(): void

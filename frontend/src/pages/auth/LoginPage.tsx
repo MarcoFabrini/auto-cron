@@ -7,6 +7,7 @@ import { AuthBrand } from '@/components/features';
 import { useLogin } from '@/hooks/useLogin';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useRegistrationOpen } from '@/hooks/useRegistrationOpen';
+import { safeNextPath } from '@/lib/safeNext';
 
 /**
  * LoginPage — composta da AuthLayout + AuthBrand + form di FormField/Input/Button.
@@ -26,7 +27,7 @@ export function LoginPage() {
 
   // Redirect post-login: solo path interni (evita open-redirect).
   const next = params.get('next');
-  const dest = next && next.startsWith('/') ? next : '/';
+  const dest = safeNextPath(next);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();

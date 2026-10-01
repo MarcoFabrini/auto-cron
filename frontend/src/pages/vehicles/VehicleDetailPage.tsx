@@ -28,7 +28,7 @@ import {
   VehicleShareCard,
   VehicleStatsCard,
 } from '@/components/features';
-import { useDeleteVehicle, useVehicle, useVehicleStats } from '@/hooks/useVehicles';
+import { useDeleteVehicle, useUnarchiveVehicle, useVehicle, useVehicleStats } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useToast } from '@/hooks/useToast';
@@ -49,6 +49,7 @@ export function VehicleDetailPage() {
   const { data, isLoading, error } = useVehicle(vehicleId);
   const stats = useVehicleStats(vehicleId);
   const deleteMutation = useDeleteVehicle();
+  const unarchive = useUnarchiveVehicle();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const currentUser = useAuthStore((s) => s.user);
@@ -68,9 +69,7 @@ export function VehicleDetailPage() {
   const archived = Boolean(data.archivedAt);
   // Permessi sul singolo veicolo (proprietario, org owner/admin o sola lettura
   // via condivisione): chi ha solo lo share in lettura non vede le azioni.
-  const canEdit = data.permissions?.canEdit ?? false;
-  const canDelete = data.permissions?.canDelete ?? false;
-  const canShare = data.permissions?.canShare ?? false;
+  const { canEdit, canDelete, canShare } = data.permissions;
 
   return (
     <div className="space-y-6">
@@ -103,6 +102,25 @@ export function VehicleDetailPage() {
         }
       />
 
+      {archived && canDelete && (
+        <Alert variant="warning" className="items-center justify-between">
+          <span>{t('vehicle.archived_banner')}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={unarchive.isPending}
+            onClick={() =>
+              unarchive.mutate(data.id, {
+                onSuccess: () => toast({ title: t('vehicle.restored'), variant: 'success' }),
+                onError: (e) => toast({ title: errorMessage(e), variant: 'error' }),
+              })
+            }
+          >
+            {t('vehicle.restore')}
+          </Button>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{t('vehicle.info')}</CardTitle>
@@ -113,6 +131,7 @@ export function VehicleDetailPage() {
             <FuelTypeBadge type={data.fuelType} />
             {data.secondaryFuelType && <FuelTypeBadge type={data.secondaryFuelType} />}
             {archived && <Badge variant="destructive">{t('vehicle.archived')}</Badge>}
+            {data.ownership === 'shared' && <Badge variant="secondary">{t('vehicle.shared_read_only')}</Badge>}
           </div>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             {data.licensePlate && (
@@ -167,7 +186,7 @@ export function VehicleDetailPage() {
           <VehicleRemindersTab vehicleId={data.id} />
         </TabsContent>
         <TabsContent value="attachments">
-          <AttachmentsSection entityType="vehicle" entityId={data.id} />
+          <AttachmentsSection entityType="vehicle" entityId={data.id} readOnly={!canEdit} />
         </TabsContent>
       </Tabs>
 

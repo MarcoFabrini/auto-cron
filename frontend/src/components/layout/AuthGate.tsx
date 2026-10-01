@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Spinner } from '@/components/ui';
+import { useTranslation } from 'react-i18next';
+import { Button, Spinner } from '@/components/ui';
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
 import { useThemeEffect } from '@/hooks/useThemeEffect';
 
@@ -16,12 +17,23 @@ export interface AuthGateProps {
 
 export function AuthGate({ children }: AuthGateProps) {
   useThemeEffect();
-  const status = useAuthBootstrap();
+  const { t } = useTranslation();
+  const { status, retry } = useAuthBootstrap();
 
   if (status === 'loading') {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-background">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (status === 'unreachable') {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background p-6 text-center">
+        <p className="text-base font-medium">{t('authGate.unreachable.title')}</p>
+        <p className="max-w-sm text-sm text-muted-foreground">{t('authGate.unreachable.description')}</p>
+        <Button onClick={retry}>{t('authGate.unreachable.retry')}</Button>
       </div>
     );
   }

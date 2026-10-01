@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Service;
 
+use App\Enum\AttachmentEntityType;
 use App\Service\Gdpr\GdprExportService;
+use App\Tests\Factory\AttachmentFactory;
 use App\Tests\Factory\MaintenanceFactory;
 use App\Tests\Factory\OrganizationFactory;
 use App\Tests\Factory\OrganizationMemberFactory;
@@ -92,6 +94,25 @@ final class GdprExportServiceTest extends KernelTestCase
         $exportedVehicle = $data['organizations_owned'][0]['vehicles'][0];
         self::assertSame('La Panda', $exportedVehicle['name']);
         self::assertCount(1, $exportedVehicle['maintenance']);
+    }
+
+    public function testExportIncludesAttachmentsOfMaintenanceAndReminders(): void
+    {
+        $user = UserFactory::createOne();
+        $org = OrganizationFactory::createOne();
+        OrganizationMemberFactory::createOne(['user' => $user, 'organization' => $org, 'role' => OrgRole::OWNER]);
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $maintenance = MaintenanceFactory::createOne(['vehicle' => $vehicle, 'organization' => $org]);
+        $reminder = ReminderFactory::createOne(['vehicle' => $vehicle, 'organization' => $org]);
+        foreach ([[AttachmentEntityType::MAINTENANCE, $maintenance->getId()], [AttachmentEntityType::REMINDER, $reminder->getId()]] as [$type, $id]) {
+            AttachmentFactory::createOne(['organization' => $org, 'entityType' => $type, 'entityId' => (string) $id]);
+        }
+
+        $data = static::getContainer()->get(GdprExportService::class)->export($user);
+
+        $exported = $data['organizations_owned'][0]['vehicles'][0];
+        self::assertCount(1, $exported['maintenance'][0]['attachments']);
+        self::assertCount(1, $exported['reminders'][0]['attachments']);
     }
 
     public function testExportIncludesReminders(): void

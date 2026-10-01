@@ -16,6 +16,7 @@ import {
 import { PageHeader } from '@/components/layout';
 import { ConfirmDialog } from '@/components/features';
 import { useDeleteExpense, useExpense } from '@/hooks/useExpenses';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -29,6 +30,8 @@ export function ExpenseDetailPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useExpense(expenseId);
+  // Veicolo condiviso in sola lettura: niente modifica, eliminazione, allegati.
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
   const deleteMutation = useDeleteExpense(data?.vehicleId ?? 0);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -50,21 +53,23 @@ export function ExpenseDetailPage() {
         description={formatCurrency(data.amount)}
         onBack={() => navigate(`/expenses?vehicleId=${data.vehicleId}`)}
         action={
-          <>
-            <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
-              <Link to={`/expenses/${data.id}/edit`}>
-                <Pencil />
-              </Link>
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => setConfirmOpen(true)}
-              aria-label={t('actions.delete')}
-            >
-              <Trash2 />
-            </Button>
-          </>
+          canEdit ? (
+            <>
+              <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
+                <Link to={`/expenses/${data.id}/edit`}>
+                  <Pencil />
+                </Link>
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => setConfirmOpen(true)}
+                aria-label={t('actions.delete')}
+              >
+                <Trash2 />
+              </Button>
+            </>
+          ) : undefined
         }
       />
 

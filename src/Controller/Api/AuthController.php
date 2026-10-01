@@ -28,6 +28,7 @@ use App\Repository\OrganizationMemberRepository;
 use App\Repository\OrganizationRepository;
 use App\Repository\PasswordResetTokenRepository;
 use App\Repository\UserRepository;
+use App\Service\ActiveOrganizationResolver;
 use App\Service\AppMailer;
 use App\Service\MailBuilder;
 use App\Service\RefreshTokenService;
@@ -37,10 +38,12 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
@@ -60,6 +63,9 @@ use Symfony\Component\Validator\Validator\ValidatorInterface;
 final class AuthController extends AbstractController
 {
     use ProblemDetailsResponseTrait;
+
+    /** Lock nominale (GET_LOCK) che serializza la registrazione del primo utente. */
+    private const REGISTER_LOCK = 'autocron:first-registration';
 
     private const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
     private const AVATAR_ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
@@ -81,9 +87,15 @@ final class AuthController extends AbstractController
         private readonly ValidatorInterface $validator,
         private readonly RateLimiterFactory $loginLimiter,
         private readonly RateLimiterFactory $refreshLimiter,
+        #[Autowire(service: 'limiter.login_ip')]
+        private readonly RateLimiterFactory $loginIpLimiter,
+        #[Autowire(service: 'limiter.token_actions')]
+        private readonly RateLimiterFactory $tokenActionsLimiter,
+        private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $forgotPasswordLimiter,
         private readonly LoggerInterface $logger,
         private readonly AttachmentStorageInterface $storage,
+        private readonly ActiveOrganizationResolver $activeOrganization,
     ) {
     }
 
@@ -119,50 +131,67 @@ final class AuthController extends AbstractController
         Request $request,
         #[MapRequestPayload] RegisterRequest $payload,
     ): JsonResponse {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         // Registrazione libera solo per il primo utente (bootstrap dell'admin di
         // istanza). Dopo, chiunque si registrasse potrebbe entrare nell'istanza:
         // si entra solo su invito (invitation/register), che ha un token.
-        if ($this->userRepo->hasUsers()) {
-            return $this->problem('auth.registration_closed', 403);
+        //
+        // Due prime registrazioni concorrenti (email diverse) passerebbero entrambe il controllo
+        // "nessun utente" e creerebbero due admin di istanza: check e creazione stanno sotto un lock
+        // nominale del DB, e utente + organizzazione + membership in un'unica transazione (un errore a
+        // metà non deve lasciare un utente senza organizzazione, con la registrazione ormai chiusa).
+        $connection = $this->em->getConnection();
+        if (!$connection->fetchOne('SELECT GET_LOCK(?, 10)', [self::REGISTER_LOCK])) {
+            return $this->problem('auth.try_again', 503);
         }
 
-        $user = (new User())
-            ->setEmail($payload->email)
-            ->setFirstName($payload->firstName)
-            ->setLastName($payload->lastName)
-            ->setLocale($payload->locale);
-        $user->setPassword($this->passwordHasher->hashPassword($user, $payload->password));
-
-        // Validazione completa (UniqueEntity etc.)
-        $errors = $this->validator->validate($user);
-        if (count($errors) > 0) {
-            return $this->validationErrorResponse($errors);
-        }
-
-        $this->em->persist($user);
         try {
-            $this->em->flush(); // necessario per ottenere $user->getId() prima dello slug
-        } catch (UniqueConstraintViolationException) {
-            // Race del bootstrap: due prime registrazioni concorrenti con la stessa email.
-            return $this->problem('auth.email_taken', 409);
+            if ($this->userRepo->hasUsers()) {
+                return $this->problem('auth.registration_closed', 403);
+            }
+
+            $user = (new User())
+                ->setEmail($payload->email)
+                ->setFirstName($payload->firstName)
+                ->setLastName($payload->lastName)
+                ->setLocale($payload->locale);
+            $user->setPassword($this->passwordHasher->hashPassword($user, $payload->password));
+
+            // Validazione completa (UniqueEntity etc.)
+            $errors = $this->validator->validate($user);
+            if (count($errors) > 0) {
+                return $this->validationErrorResponse($errors);
+            }
+
+            try {
+                $this->em->wrapInTransaction(function () use ($user, $payload): void {
+                    $this->em->persist($user);
+                    $this->em->flush(); // necessario per ottenere $user->getId() prima dello slug
+
+                    $orgName = $payload->organizationName
+                        ?? sprintf('%s %s', $payload->firstName, $payload->lastName);
+                    $org = (new Organization())
+                        ->setName($orgName)
+                        ->setSlug($this->buildUniqueSlug($orgName, $user->getId()));
+                    $this->em->persist($org);
+
+                    $this->em->persist(
+                        (new OrganizationMember())
+                            ->setUser($user)
+                            ->setOrganization($org)
+                            ->setRole(\App\Enum\OrgRole::OWNER)
+                            ->setAcceptedAt(new \DateTimeImmutable()),
+                    );
+                });
+            } catch (UniqueConstraintViolationException) {
+                return $this->problem('auth.email_taken', 409);
+            }
+        } finally {
+            $connection->fetchOne('SELECT RELEASE_LOCK(?)', [self::REGISTER_LOCK]);
         }
-
-        // Crea Organization personale
-        $orgName = $payload->organizationName
-            ?? sprintf('%s %s', $payload->firstName, $payload->lastName);
-        $org = (new Organization())
-            ->setName($orgName)
-            ->setSlug($this->buildUniqueSlug($orgName, $user->getId()));
-        $this->em->persist($org);
-
-        $membership = (new OrganizationMember())
-            ->setUser($user)
-            ->setOrganization($org)
-            ->setRole(\App\Enum\OrgRole::OWNER)
-            ->setAcceptedAt(new \DateTimeImmutable());
-        $this->em->persist($membership);
-
-        $this->em->flush();
 
         // Invio email di verifica (best-effort: un SMTP giù non deve far fallire il registro).
         $this->issueAndSendVerification($user);
@@ -192,12 +221,21 @@ final class AuthController extends AbstractController
         #[MapRequestPayload] LoginRequest $payload,
     ): JsonResponse {
         $limiter = $this->loginLimiter->create($this->loginLimiterKey($request, $payload->email));
-        if (!$limiter->consume()->isAccepted()) {
+        if (!$limiter->consume()->isAccepted() || $this->isBlocked($this->loginIpLimiter)) {
             return $this->problem('auth.too_many_attempts', 429);
         }
 
         $user = $this->userRepo->findOneByEmail($payload->email);
-        if (!$user || !$this->passwordHasher->isPasswordValid($user, $payload->password)) {
+        if (!$user) {
+            // Stesso costo di una verifica reale: il tempo di risposta non rivela se l'email esiste.
+            $this->passwordHasher->hashPassword(new User(), $payload->password);
+            $this->throttled($this->loginIpLimiter);
+
+            return $this->problem('auth.invalid_credentials', 401);
+        }
+        if (!$this->passwordHasher->isPasswordValid($user, $payload->password)) {
+            $this->throttled($this->loginIpLimiter);
+
             return $this->problem('auth.invalid_credentials', 401);
         }
 
@@ -251,6 +289,10 @@ final class AuthController extends AbstractController
         }
 
         $rotated = $this->refreshTokens->rotate($refresh);
+        if ($rotated === null) {
+            return $this->problem('auth.invalid_refresh_token', 401);
+        }
+
         return $this->buildAuthResponse($refresh->getUser(), $clientType, existingRefresh: $rotated);
     }
 
@@ -294,7 +336,7 @@ final class AuthController extends AbstractController
         ],
     )]
     #[Route('/switch-org', name: 'switch_org', methods: ['POST'])]
-    public function switchOrg(#[MapRequestPayload] SwitchOrgRequest $payload): JsonResponse
+    public function switchOrg(Request $request, #[MapRequestPayload] SwitchOrgRequest $payload): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -312,6 +354,13 @@ final class AuthController extends AbstractController
             'user_id' => $user->getId(),
             'active_org_id' => $org->getId(),
         ]);
+
+        // Ricorda l'org scelta sulla sessione, così un refresh non riporta alla prima org.
+        $rawRefresh = $request->cookies->get(RefreshTokenService::COOKIE_NAME) ?? $payload->refreshToken;
+        $refresh = $rawRefresh ? $this->refreshTokens->findValid($rawRefresh) : null;
+        if ($refresh !== null && $refresh->getUser()->getId() === $user->getId()) {
+            $this->refreshTokens->setActiveOrganization($refresh, (int) $org->getId());
+        }
 
         return $this->json([
             'access_token' => $accessToken,
@@ -364,10 +413,17 @@ final class AuthController extends AbstractController
     )]
     #[Route('/profile', name: 'update_profile', methods: ['PUT'])]
     #[IsGranted('ROLE_USER')]
-    public function updateProfile(#[MapRequestPayload] UpdateProfileRequest $payload): JsonResponse
+    public function updateProfile(Request $request, #[MapRequestPayload] UpdateProfileRequest $payload): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
+
+        $emailChanged = mb_strtolower($payload->email) !== mb_strtolower($user->getEmail());
+        if ($emailChanged
+            && ($payload->currentPassword === null || !$this->passwordHasher->isPasswordValid($user, $payload->currentPassword))
+        ) {
+            return $this->problem('auth.invalid_current_password', 400);
+        }
 
         $existing = $this->userRepo->findOneByEmail($payload->email);
         if ($existing && $existing->getId() !== $user->getId()) {
@@ -392,10 +448,30 @@ final class AuthController extends AbstractController
             return $this->problem('auth.email_taken', 409);
         }
 
+        if ($emailChanged) {
+            // La nuova email va riverificata; le altre sessioni (potenzialmente di un attaccante) decadono.
+            $user->resetEmailVerification();
+            $this->em->flush();
+            $activeOrgId = $this->activeOrganization->tryResolve()?->getId();
+            $this->refreshTokens->revokeAllForUser($user);
+            $this->issueAndSendVerification($user);
+
+            // Nuova sessione per il client corrente (mantiene l'org attiva).
+            return $this->buildAuthResponse(
+                $user,
+                $this->resolveClientType($request),
+                existingRefresh: $this->refreshTokens->issue($user, $activeOrgId),
+            );
+        }
+
         // L'email è l'identifier JWT: se cambia, il token in memoria diventa stale.
-        // Riemettiamo un access_token fresco così il client resta autenticato.
+        // Riemettiamo un access_token fresco (mantenendo l'org attiva) così il client resta autenticato.
+        $activeOrgId = $this->activeOrganization->tryResolve()?->getId();
+
         return $this->json([
-            'access_token' => $this->jwtManager->create($user),
+            'access_token' => $activeOrgId !== null
+                ? $this->jwtManager->createFromPayload($user, ['user_id' => $user->getId(), 'active_org_id' => $activeOrgId])
+                : $this->jwtManager->create($user),
             'user' => $this->userPayload($user),
         ]);
     }
@@ -613,14 +689,24 @@ final class AuthController extends AbstractController
     #[Route('/reset-password', name: 'reset_password', methods: ['POST'])]
     public function resetPassword(#[MapRequestPayload] ResetPasswordRequest $payload): JsonResponse
     {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $resetToken = $this->resetTokenRepo->findValidByHash(hash('sha256', $payload->token));
         if (!$resetToken) {
             return $this->problem('auth.invalid_reset_token', 400);
         }
 
+        // Consumo atomico: due richieste concorrenti con lo stesso token non passano entrambe.
+        if (!$this->resetTokenRepo->consume($resetToken)) {
+            return $this->problem('auth.invalid_reset_token', 400);
+        }
+
         $user = $resetToken->getUser();
         $user->setPassword($this->passwordHasher->hashPassword($user, $payload->password));
-        $resetToken->markUsed();
+        // Il link è arrivato alla casella: il reset ne prova il possesso.
+        $user->markEmailVerified();
         $this->em->flush();
 
         // Tutte le sessioni esistenti vanno invalidate dopo un reset.
@@ -645,13 +731,20 @@ final class AuthController extends AbstractController
     #[Route('/verify-email', name: 'verify_email', methods: ['POST'])]
     public function verifyEmail(#[MapRequestPayload] VerifyEmailRequest $payload): JsonResponse
     {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $token = $this->verificationTokenRepo->findValidByHash(hash('sha256', $payload->token));
         if (!$token) {
             return $this->problem('auth.invalid_verification_token', 400);
         }
 
+        if (!$this->verificationTokenRepo->consume($token)) {
+            return $this->problem('auth.invalid_verification_token', 400);
+        }
+
         $token->getUser()->markEmailVerified();
-        $token->markUsed();
         $this->em->flush();
 
         return new JsonResponse(null, 204);
@@ -688,6 +781,10 @@ final class AuthController extends AbstractController
     #[Route('/invitation/{token}', name: 'invitation_preview', methods: ['GET'], requirements: ['token' => '[a-f0-9]{64}'])]
     public function previewInvitation(string $token): JsonResponse
     {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $invitation = $this->invitationRepo->findValidByHash(hash('sha256', $token));
         if (!$invitation) {
             return $this->problem('invitation.invalid', 400);
@@ -715,6 +812,10 @@ final class AuthController extends AbstractController
     #[IsGranted('ROLE_USER')]
     public function acceptInvitation(#[MapRequestPayload] AcceptInvitationRequest $payload): JsonResponse
     {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $invitation = $this->invitationRepo->findValidByHash(hash('sha256', $payload->token));
         if (!$invitation) {
             return $this->problem('invitation.invalid', 400);
@@ -726,8 +827,18 @@ final class AuthController extends AbstractController
             return $this->problem('invitation.not_for_you', 403);
         }
 
-        $this->acceptInvitationFor($user, $invitation);
-        $this->em->flush();
+        // Claim atomico dell'invito + membership nella stessa transazione.
+        $accepted = $this->em->wrapInTransaction(function () use ($user, $invitation): bool {
+            if (!$this->invitationRepo->consume($invitation)) {
+                return false;
+            }
+            $this->acceptInvitationFor($user, $invitation);
+
+            return true;
+        });
+        if (!$accepted) {
+            return $this->problem('invitation.invalid', 400);
+        }
 
         return $this->json(['status' => 'ok', 'organizationId' => $invitation->getOrganization()->getId()]);
     }
@@ -749,6 +860,10 @@ final class AuthController extends AbstractController
         Request $request,
         #[MapRequestPayload] RegisterInvitedRequest $payload,
     ): JsonResponse {
+        if ($this->throttled($this->tokenActionsLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $invitation = $this->invitationRepo->findValidByHash(hash('sha256', $payload->token));
         if (!$invitation) {
             return $this->problem('invitation.invalid', 400);
@@ -774,19 +889,29 @@ final class AuthController extends AbstractController
             return $this->validationErrorResponse($errors);
         }
 
-        $this->em->persist($user);
-        try {
-            $this->em->flush();
-        } catch (UniqueConstraintViolationException) {
-            return $this->problem('auth.email_taken', 409);
-        }
-
         // Niente org personale: l'invitato ENTRA nell'organizzazione che lo ha
         // invitato (modello family-sharing self-host) col ruolo dell'invito, non
         // ne possiede una propria. Resta quindi un'unica membership → l'org attiva
         // (JWT active_org_id e display frontend) è sempre quella dell'invito.
-        $this->acceptInvitationFor($user, $invitation);
-        $this->em->flush();
+        // Claim dell'invito, utente e membership in un'unica transazione: un invito non si usa due volte
+        // e un errore a metà non lascia un utente senza organizzazione.
+        try {
+            $registered = $this->em->wrapInTransaction(function () use ($user, $invitation): bool {
+                if (!$this->invitationRepo->consume($invitation)) {
+                    return false;
+                }
+                $this->em->persist($user);
+                $this->em->flush();
+                $this->acceptInvitationFor($user, $invitation);
+
+                return true;
+            });
+        } catch (UniqueConstraintViolationException) {
+            return $this->problem('auth.email_taken', 409);
+        }
+        if (!$registered) {
+            return $this->problem('invitation.invalid', 400);
+        }
 
         return $this->buildAuthResponse($user, $this->resolveClientType($request), statusCode: 201);
     }
@@ -813,7 +938,7 @@ final class AuthController extends AbstractController
         } elseif (!$existing->isAccepted()) {
             $existing->setAcceptedAt(new \DateTimeImmutable());
         }
-        $invitation->markUsed();
+        // L'invito è già stato marcato usato (atomicamente) da InvitationRepository::consume().
     }
 
     /**
@@ -871,8 +996,15 @@ final class AuthController extends AbstractController
         ?RefreshToken $existingRefresh = null,
         int $statusCode = 200,
     ): JsonResponse {
-        $accessToken = $this->jwtManager->create($user);
         $refresh = $existingRefresh ?? $this->refreshTokens->issue($user);
+
+        // Sessione con org attiva già scelta (refresh): la manteniamo se l'utente è ancora membro.
+        $activeOrgId = $refresh->getActiveOrganizationId();
+        $activeOrg = $activeOrgId !== null ? $this->orgRepo->find($activeOrgId) : null;
+        $membership = $activeOrg !== null ? $this->memberRepo->findMembership($user, $activeOrg) : null;
+        $accessToken = $membership !== null && $membership->isAccepted()
+            ? $this->jwtManager->createFromPayload($user, ['user_id' => $user->getId(), 'active_org_id' => $activeOrgId])
+            : $this->jwtManager->create($user);
 
         $body = [
             'access_token' => $accessToken,
@@ -880,7 +1012,7 @@ final class AuthController extends AbstractController
         ];
 
         if ($clientType === 'mobile') {
-            $body['refresh_token'] = $refresh->getToken();
+            $body['refresh_token'] = $refresh->getPlainToken();
             return new JsonResponse($body, $statusCode);
         }
 
@@ -888,7 +1020,7 @@ final class AuthController extends AbstractController
         $response = new JsonResponse($body, $statusCode);
         $response->headers->setCookie(Cookie::create(
             name: RefreshTokenService::COOKIE_NAME,
-            value: $refresh->getToken(),
+            value: $refresh->getPlainToken(),
             expire: $refresh->getExpiresAt(),
             path: '/api/auth',
             secure: $this->getParameter('kernel.environment') !== 'dev',
@@ -896,6 +1028,27 @@ final class AuthController extends AbstractController
             sameSite: Cookie::SAMESITE_LAX,
         ));
         return $response;
+    }
+
+    /**
+     * True se l'IP ha già esaurito i tentativi, SENZA consumarne uno. Il limiter di login per solo IP
+     * conta i fallimenti (vedi {@see self::throttled()} nei rami di errore): tanti login riusciti
+     * dietro lo stesso NAT non devono bloccare nessuno.
+     */
+    private function isBlocked(RateLimiterFactory $factory): bool
+    {
+        $ip = $this->requestStack->getCurrentRequest()?->getClientIp() ?? 'unknown';
+
+        // consume(0) risulta sempre "accettato": si guarda quanti tentativi restano.
+        return $factory->create($ip)->consume(0)->getRemainingTokens() <= 0;
+    }
+
+    /** Consuma un tentativo per l'IP del client; true se con questo il limite è superato. */
+    private function throttled(RateLimiterFactory $factory): bool
+    {
+        $ip = $this->requestStack->getCurrentRequest()?->getClientIp() ?? 'unknown';
+
+        return !$factory->create($ip)->consume()->isAccepted();
     }
 
     private function resolveClientType(Request $request): string

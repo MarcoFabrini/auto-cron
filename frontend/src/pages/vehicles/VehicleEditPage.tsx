@@ -32,6 +32,7 @@ export function VehicleEditPage() {
 
   if (error) return <Alert variant="error">{errorMessage(error)}</Alert>;
   if (!data) return null;
+  if (!data.permissions.canEdit) return <Alert variant="warning">{t('vehicle.read_only_no_changes')}</Alert>;
 
   return (
     <div className="space-y-6">

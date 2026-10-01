@@ -50,8 +50,8 @@ export function useUpdateMaintenance(id: number) {
   return useMutation({
     mutationFn: (body: UpdateMaintenanceDto) => updateMaintenance(id, body),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: maintenanceKeys.detail(id) });
-      void qc.invalidateQueries({ queryKey: maintenanceKeys.byVehicle(vars.vehicleId) });
+      // Il PUT può spostare la voce su un altro veicolo: si invalida tutto il dominio, non solo il veicolo corrente.
+      void qc.invalidateQueries({ queryKey: maintenanceKeys.all });
       invalidateVehicleStats(qc, vars.vehicleId);
     },
   });
@@ -62,7 +62,7 @@ export function useDeleteMaintenance(vehicleId: number) {
   return useMutation({
     mutationFn: (id: number) => deleteMaintenance(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: maintenanceKeys.byVehicle(vehicleId) });
+      void qc.invalidateQueries({ queryKey: maintenanceKeys.all });
       invalidateVehicleStats(qc, vehicleId);
     },
   });

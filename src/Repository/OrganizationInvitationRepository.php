@@ -68,4 +68,21 @@ class OrganizationInvitationRepository extends ServiceEntityRepository
             ->getQuery()
             ->execute();
     }
+
+    /**
+     * Marca il token come usato SOLO se non lo è già (UPDATE condizionale): true per la sola richiesta
+     * che lo consuma. Due richieste concorrenti con lo stesso token non passano entrambe.
+     */
+    public function consume(OrganizationInvitation $token): bool
+    {
+        return $this->createQueryBuilder('i')
+            ->update()
+            ->set('i.usedAt', ':now')
+            ->where('i.id = :id')
+            ->andWhere('i.usedAt IS NULL')
+            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('id', $token->getId())
+            ->getQuery()
+            ->execute() === 1;
+    }
 }

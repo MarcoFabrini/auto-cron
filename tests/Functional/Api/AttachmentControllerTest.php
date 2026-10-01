@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use App\Enum\AttachmentEntityType;
 use App\Repository\AttachmentRepository;
 use App\Tests\Factory\AttachmentFactory;
 use App\Tests\Factory\MaintenanceFactory;
+use App\Tests\Factory\RefuelingFactory;
+use App\Tests\Factory\ReminderFactory;
 use App\Tests\Factory\VehicleFactory;
 use App\Tests\Support\ApiTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -174,6 +177,42 @@ final class AttachmentControllerTest extends ApiTestCase
         $resp = $this->client->getResponse();
         self::assertInstanceOf(\Symfony\Component\HttpFoundation\BinaryFileResponse::class, $resp);
         self::assertSame('image/jpeg', $resp->headers->get('Content-Type'));
+    }
+
+    #[DataProvider('refuelingAndReminderTypes')]
+    public function testDownloadAndDeleteOnRefuelingAndReminder(string $type): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $entity = 'refueling' === $type
+            ? RefuelingFactory::createOne(['organization' => $org, 'vehicle' => $vehicle])
+            : ReminderFactory::createOne(['organization' => $org, 'vehicle' => $vehicle]);
+
+        $server = ['HTTP_AUTHORIZATION' => 'Bearer '.$token, 'HTTP_X_CLIENT_TYPE' => 'mobile'];
+        $this->client->request(
+            'POST',
+            '/api/attachments',
+            parameters: ['entityType' => $type, 'entityId' => (string) $entity->getId()],
+            files: ['file' => $this->makeUploadedFile('photo.jpg', $this->jpegBytes(), 'image/jpeg')],
+            server: $server,
+        );
+        self::assertResponseStatusCodeSame(201);
+        $id = $this->jsonBody()['id'];
+
+        $this->client->request('GET', '/api/attachments/'.$id, server: $server);
+        self::assertResponseIsSuccessful();
+
+        $this->jsonRequest('DELETE', '/api/attachments/'.$id, accessToken: $token);
+        self::assertResponseStatusCodeSame(204);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function refuelingAndReminderTypes(): iterable
+    {
+        yield 'refueling' => ['refueling'];
+        yield 'reminder' => ['reminder'];
     }
 
     public function testDeleteAttachmentRemovesDbAndFile(): void

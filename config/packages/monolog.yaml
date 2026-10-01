@@ -49,7 +49,8 @@ when@prod:
             nested:
                 type: stream
                 path: "php://stdout"
-                level: debug
+                # info: al primo errore escono gli ultimi 50 record, ma senza il rumore (e i dati) del livello debug
+                level: info
                 formatter: monolog.formatter.json
             # Deprecation log separato in stderr (rumore minore)
             deprecation:

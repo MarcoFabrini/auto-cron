@@ -7,6 +7,8 @@ namespace App\Service;
 use App\Entity\Vehicle;
 use App\Enum\FuelType;
 use Doctrine\DBAL\Connection;
+use Symfony\Contracts\Cache\CacheInterface;
+use Symfony\Contracts\Cache\ItemInterface;
 
 /**
  * Aggregati per la dashboard del veicolo.
@@ -15,9 +17,24 @@ use Doctrine\DBAL\Connection;
  */
 final class VehicleStatsService
 {
+    /** Le statistiche costano ~9 query: si tengono in cache, invalidate a ogni scrittura che le alimenta. */
+    private const CACHE_TTL = 300;
+
     public function __construct(
         private readonly Connection $db,
+        private readonly CacheInterface $cache,
     ) {
+    }
+
+    /** Toglie dalla cache le statistiche del veicolo (vedi VehicleStatsCacheInvalidator). */
+    public function invalidate(int $vehicleId): void
+    {
+        $this->cache->delete(self::cacheKey($vehicleId));
+    }
+
+    private static function cacheKey(int $vehicleId): string
+    {
+        return 'vehicle_stats.'.$vehicleId;
     }
 
     /**
@@ -32,6 +49,26 @@ final class VehicleStatsService
      * }
      */
     public function compute(Vehicle $vehicle): array
+    {
+        $vehicleId = (int) $vehicle->getId();
+
+        return $this->cache->get(self::cacheKey($vehicleId), function (ItemInterface $item) use ($vehicle): array {
+            $item->expiresAfter(self::CACHE_TTL);
+
+            return $this->computeUncached($vehicle);
+        });
+    }
+
+    /**
+     * @return array{
+     *     consumption: array<string, float|null>,
+     *     totals: array{cost: string, refuelings: int, maintenances: int, expenses: int},
+     *     currentKm: int,
+     *     kmDriven: int,
+     *     costPerKm: float|null,
+     * }
+     */
+    private function computeUncached(Vehicle $vehicle): array
     {
         $vehicleId = (int) $vehicle->getId();
 
@@ -73,41 +110,53 @@ final class VehicleStatsService
      * quindi la somma dei litri immessi tra due pieni corrisponde esattamente al
      * consumo, a prescindere da quanti rifornimenti parziali ci sono nel mezzo.
      *
+     * Veicoli bi-fuel: se tra i due pieni c'è un rifornimento dell'ALTRO carburante, i km
+     * percorsi nell'intervallo sono in parte fatti con quello: attribuirli tutti al primo ne
+     * sovrastimerebbe il consumo. Quell'intervallo viene scartato (il pieno successivo fa da nuovo
+     * punto di partenza).
+     *
      * @param list<FuelType> $fuels
      * @return array<string, float|null>  key = fuel_type value
      */
     private function averageConsumptionPerFuel(int $vehicleId, array $fuels): array
     {
+        // Una sola lettura ordinata di tutti i rifornimenti: servono anche quelli dell'altro carburante.
+        /** @var list<array{km: string|int, liters: string, full_tank: string|int|bool, fuel_type: string, refueled_at: string, id: string|int}> $rows */
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT km, liters, full_tank, fuel_type, refueled_at, id
+             FROM refuelings
+             WHERE vehicle_id = :vid
+             ORDER BY refueled_at ASC, km ASC, id ASC',
+            ['vid' => $vehicleId],
+        );
+
         $result = [];
-
         foreach ($fuels as $fuel) {
-            $rows = $this->db->fetchAllAssociative(
-                'SELECT km, liters, full_tank, refueled_at, id
-                 FROM refuelings
-                 WHERE vehicle_id = :vid AND fuel_type = :fuel
-                 ORDER BY refueled_at ASC, id ASC',
-                ['vid' => $vehicleId, 'fuel' => $fuel->value],
-            );
-
-            $kmPerLiter = $this->avgKmPerLiterFillToFill($rows);
-            $result[$fuel->value] = $kmPerLiter;
+            $result[$fuel->value] = $this->avgKmPerLiterFillToFill($rows, $fuel->value);
         }
 
         return $result;
     }
 
     /**
-     * @param list<array{km: string|int, liters: string, full_tank: string|int|bool, refueled_at: string, id: string|int}> $rows
+     * @param list<array{km: string|int, liters: string, full_tank: string|int|bool, fuel_type: string, refueled_at: string, id: string|int}> $rows tutti i rifornimenti del veicolo, in ordine
      */
-    private function avgKmPerLiterFillToFill(array $rows): ?float
+    private function avgKmPerLiterFillToFill(array $rows, string $fuel): ?float
     {
         $totalKm = 0;
         $totalLiters = 0.0;
 
         $lastFullKm = null;
         $litersSinceLastFull = 0.0;
+        $mixedWithOtherFuel = false;
 
         foreach ($rows as $row) {
+            if ($row['fuel_type'] !== $fuel) {
+                // Rifornimento dell'altro carburante: l'intervallo in corso non è più "puro".
+                $mixedWithOtherFuel = true;
+                continue;
+            }
+
             if ($lastFullKm !== null) {
                 $litersSinceLastFull += (float) $row['liters'];
             }
@@ -116,7 +165,7 @@ final class VehicleStatsService
                 continue;
             }
 
-            if ($lastFullKm !== null) {
+            if ($lastFullKm !== null && !$mixedWithOtherFuel) {
                 $deltaKm = (int) $row['km'] - $lastFullKm;
                 if ($deltaKm > 0 && $litersSinceLastFull > 0) {
                     $totalKm += $deltaKm;
@@ -126,6 +175,7 @@ final class VehicleStatsService
 
             $lastFullKm = (int) $row['km'];
             $litersSinceLastFull = 0.0;
+            $mixedWithOtherFuel = false;
         }
 
         return $totalLiters > 0 ? round($totalKm / $totalLiters, 2) : null;

@@ -10,6 +10,7 @@ use App\Repository\MaintenanceRepository;
 use App\Repository\VehicleRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentCleaner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -33,6 +34,7 @@ final class MaintenanceController extends AbstractController
         private readonly MaintenanceRepository $repo,
         private readonly VehicleRepository $vehicleRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
+        private readonly AttachmentCleaner $attachmentCleaner,
         private readonly SerializerInterface $serializer,
     ) {
     }
@@ -64,7 +66,7 @@ final class MaintenanceController extends AbstractController
         }
         $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
 
-        $page = max(1, (int) $request->query->get('page', 1));
+        $page = min(100_000, max(1, (int) $request->query->get('page', 1)));
         $limit = min(100, max(1, (int) $request->query->get('limit', 20)));
 
         $items = $this->repo->findByVehiclePaginated($vehicle, $page, $limit);
@@ -163,8 +165,7 @@ final class MaintenanceController extends AbstractController
         $m = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $m);
 
-        $this->em->remove($m);
-        $this->em->flush();
+        $this->attachmentCleaner->removeRecord($m);
 
         return new JsonResponse(null, 204);
     }

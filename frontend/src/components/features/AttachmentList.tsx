@@ -21,6 +21,8 @@ import type { Attachment, AttachmentEntityType } from '@/api/types/attachment';
 export interface AttachmentListProps {
   entityType: AttachmentEntityType;
   entityId: number;
+  /** Veicolo in sola lettura (condiviso): gli allegati si scaricano ma non si eliminano. */
+  readOnly?: boolean;
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -32,10 +34,11 @@ function triggerDownload(blob: Blob, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Revoca differita: su Safari/Firefox revocare subito può annullare il download di blob grandi.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export function AttachmentList({ entityType, entityId }: AttachmentListProps) {
+export function AttachmentList({ entityType, entityId, readOnly = false }: AttachmentListProps) {
   const { t } = useTranslation();
   const errorMessage = useApiErrorMessage();
   const { data, isLoading, error } = useAttachments(entityType, entityId);
@@ -64,7 +67,13 @@ export function AttachmentList({ entityType, entityId }: AttachmentListProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
       {data.map((a) => (
-        <AttachmentItem key={a.id} attachment={a} entityType={entityType} entityId={entityId} />
+        <AttachmentItem
+          key={a.id}
+          attachment={a}
+          entityType={entityType}
+          entityId={entityId}
+          readOnly={readOnly}
+        />
       ))}
     </div>
   );
@@ -74,9 +83,10 @@ interface AttachmentItemProps {
   attachment: Attachment;
   entityType: AttachmentEntityType;
   entityId: number;
+  readOnly: boolean;
 }
 
-function AttachmentItem({ attachment, entityType, entityId }: AttachmentItemProps) {
+function AttachmentItem({ attachment, entityType, entityId, readOnly }: AttachmentItemProps) {
   const a = attachment;
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -132,14 +142,16 @@ function AttachmentItem({ attachment, entityType, entityId }: AttachmentItemProp
           </p>
           <p className="text-[11px] text-muted-foreground">{formatBytes(a.sizeBytes)}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setConfirmOpen(true)}
-          className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={t('actions.delete')}
-        >
-          <Trash2 className="size-4" />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t('actions.delete')}
+          >
+            <Trash2 className="size-4" />
+          </button>
+        )}
       </div>
 
       <ConfirmDialog

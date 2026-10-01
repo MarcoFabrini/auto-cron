@@ -9,12 +9,12 @@ const dateString = z
 export const maintenanceSchema = z.object({
   vehicleId: z.number({ message: 'maintenance.vehicle.required' }).int().positive(),
   performedAt: dateString,
-  km: z.number({ message: 'maintenance.km.required' }).int().nonnegative(),
+  km: z.number({ message: 'maintenance.km.required' }).int().nonnegative().max(9_999_999, 'common.km_too_large'),
   type: z.enum(MAINTENANCE_TYPES, { message: 'maintenance.type.required' }),
   category: z.enum(MAINTENANCE_CATEGORIES, { message: 'maintenance.category.required' }),
-  description: z.string().min(1, 'maintenance.description.required').max(2000),
-  cost: decimalString(2).nullable().optional(),
-  workshop: z.string().max(150).nullable().optional(),
+  description: z.string().min(1, 'maintenance.description.required').max(5000),
+  cost: decimalString(2, { maxIntegerDigits: 8, allowZero: true }).nullable().optional(),
+  workshop: z.string().max(200).nullable().optional(),
 });
 
 export type MaintenanceFormData = z.infer<typeof maintenanceSchema>;

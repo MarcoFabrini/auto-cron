@@ -27,6 +27,15 @@ function bufferToBase64(buf: ArrayBuffer | null): string {
   return btoa(String.fromCharCode(...new Uint8Array(buf)));
 }
 
+/** True se la subscription del browser è stata creata con una chiave VAPID diversa da quella corrente. */
+function hasDifferentServerKey(sub: PushSubscription, vapidKey: string): boolean {
+  const current = sub.options?.applicationServerKey;
+  if (!current) return false;
+  const a = new Uint8Array(current);
+  const b = urlBase64ToUint8Array(vapidKey);
+  return a.length !== b.length || a.some((byte, i) => byte !== b[i]);
+}
+
 const SW_READY_TIMEOUT_MS = 10_000;
 
 /**
@@ -104,7 +113,13 @@ export function usePushSubscription() {
           if (!cancelled) setStatus('sw-unavailable');
           return;
         }
-        const sub = await reg.pushManager.getSubscription();
+        let sub = await reg.pushManager.getSubscription();
+        // Chiavi VAPID rigenerate: la vecchia subscription non è più valida per il server
+        // (e impedirebbe di iscriversi di nuovo). La scarta e riparte da "non iscritto".
+        if (sub && hasDifferentServerKey(sub, vapidKey!)) {
+          await sub.unsubscribe();
+          sub = null;
+        }
         if (!cancelled) setStatus(sub ? 'subscribed' : 'unsubscribed');
       } catch {
         if (!cancelled) setStatus('sw-unavailable');
@@ -129,6 +144,8 @@ export function usePushSubscription() {
       }
 
       const reg = await navigator.serviceWorker.ready;
+      const stale = await reg.pushManager.getSubscription();
+      if (stale && hasDifferentServerKey(stale, vapidKey)) await stale.unsubscribe();
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
@@ -167,7 +184,15 @@ export function usePushSubscription() {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      if (sub) await sub.unsubscribe();
+      if (sub) {
+        // Prima il server (se fallisce si resta iscritti, stato coerente), poi il browser.
+        await authFetch<void>('/api/push-subscriptions/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform: 'web', endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
       setStatus('unsubscribed');
     } catch (err) {
       setStatus('subscribed');

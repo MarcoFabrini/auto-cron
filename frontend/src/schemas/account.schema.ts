@@ -8,6 +8,8 @@ export const profileSchema = z.object({
   firstName: z.string().min(1, 'account.first_name.required').max(100),
   lastName: z.string().min(1, 'account.last_name.required').max(100),
   email: z.string().min(1, 'account.email.required').email('account.email.invalid').max(180),
+  /** Richiesta solo se l'email cambia (controllata nel dialog): protegge l'account da un token rubato. */
+  currentPassword: z.string().optional(),
 });
 export type ProfileFormData = z.infer<typeof profileSchema>;
 

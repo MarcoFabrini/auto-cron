@@ -65,17 +65,19 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
         self::assertCount(0, static::getMailerMessages());
     }
 
-    public function testHandlerNotifiesOnlyUsersWhoCanSeeTheVehicle(): void
+    public function testHandlerNotifiesOnlyTheVehicleOwner(): void
     {
         $vehicle = VehicleFactory::createOne();
         $org = $vehicle->getOrganization();
 
-        $owner = UserFactory::createOne(['email' => 'owner@test.it']);
+        $orgOwner = UserFactory::createOne(['email' => 'org-owner@test.it']);
+        $vehicleOwner = UserFactory::createOne(['email' => 'vehicle-owner@test.it']);
         $sharedMember = UserFactory::createOne(['email' => 'shared@test.it']);
         $strangerMember = UserFactory::createOne(['email' => 'stranger@test.it']);
         $uPending = UserFactory::createOne(['email' => 'pending@test.it']);
 
-        OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $owner, 'role' => OrgRole::OWNER]);
+        OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $orgOwner, 'role' => OrgRole::OWNER]);
+        OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $vehicleOwner, 'role' => OrgRole::MEMBER]);
         OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $sharedMember, 'role' => OrgRole::MEMBER]);
         OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $strangerMember, 'role' => OrgRole::MEMBER]);
         OrganizationMemberFactory::createOne([
@@ -83,7 +85,8 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
             'role' => OrgRole::MEMBER,
             'acceptedAt' => null, // pending
         ]);
-        // Il membro "shared" ha una condivisione del veicolo; "stranger" no.
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $vehicle, 'user' => $vehicleOwner]);
+        // Il membro "shared" ha una condivisione in sola lettura; "stranger" nessun accesso.
         VehicleShareFactory::createOne(['vehicle' => $vehicle, 'user' => $sharedMember]);
 
         $reminder = ReminderFactory::createOne([
@@ -103,12 +106,9 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
         $recipients = $this->extractRecipients($ourMessages);
         sort($recipients);
 
-        // Owner dell'org (vede tutto) + chi ha la condivisione. Non il membro senza accesso al
-        // veicolo (non lo vedrebbe nell'app: la notifica rivelerebbe un veicolo altrui) né il pending.
-        self::assertSame(
-            ['owner@test.it', 'shared@test.it'],
-            array_values(array_unique($recipients)),
-        );
+        // Solo il proprietario del veicolo: non l'owner dell'org (vede i veicoli altrui ma non sono
+        // suoi), non chi ha la condivisione in sola lettura, né chi non ha accesso o è pending.
+        self::assertSame(['vehicle-owner@test.it'], array_values(array_unique($recipients)));
         self::assertEmailTextBodyContains($ourMessages[0], 'Revisione');
     }
 
@@ -118,6 +118,7 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
         $org = $vehicle->getOrganization();
         $user = UserFactory::createOne(['email' => 'pushed@test.it']);
         OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $user, 'role' => OrgRole::OWNER]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $vehicle, 'user' => $user]);
 
         // Crea una push subscription Web
         $sub = (new PushSubscription())
@@ -213,6 +214,73 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
         self::assertSame(ReminderUrgency::OVERDUE, $reminder->getNotifiedUrgency());
     }
 
+    public function testHandlerDoesNothingWhenAnotherWorkerAlreadyClaimedTheLevel(): void
+    {
+        [$vehicle, $org] = $this->vehicleWithOwner('race@test.it');
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-2 days'), 'description' => 'Race',
+        ]);
+
+        // Un altro worker ha già preso in carico il livello "scaduto" (l'entity in memoria è ancora stale).
+        self::assertTrue(
+            static::getContainer()->get(\App\Repository\ReminderRepository::class)
+                ->claimNotification((int) $reminder->getId(), ReminderUrgency::OVERDUE, null),
+        );
+
+        ($this->handler)(new SendReminderNotificationMessage((int) $reminder->getId()));
+
+        self::assertCount(0, $this->filterHandlerEmails('Race'), 'Il claim atomico evita il doppio invio');
+    }
+
+    public function testAnonymizedAccountsAreNeverNotified(): void
+    {
+        [$vehicle, $org] = $this->vehicleWithOwner('deleted-7-abc@anonymized.local');
+        OrganizationMemberFactory::createOne([
+            'organization' => $org,
+            'user' => UserFactory::createOne(['email' => 'vivo@test.it']),
+            'role' => OrgRole::ADMIN,
+        ]);
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-1 day'), 'description' => 'Anon',
+        ]);
+
+        ($this->handler)(new SendReminderNotificationMessage((int) $reminder->getId()));
+
+        // Il proprietario è anonimizzato: nessuno riceve nulla (l'admin dell'org non è il proprietario).
+        self::assertSame([], $this->extractRecipients($this->filterHandlerEmails('Anon')));
+    }
+
+    public function testReleaseRestoresTheLastNotifiedTimestamp(): void
+    {
+        $reminder = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('-2 days')]);
+        $repo = static::getContainer()->get(\App\Repository\ReminderRepository::class);
+        $id = (int) $reminder->getId();
+
+        $repo->claimNotification($id, ReminderUrgency::OVERDUE, null);
+        $repo->releaseNotification($id, ReminderUrgency::OVERDUE, null, null);
+
+        $this->em->clear();
+        $fresh = $this->em->find(\App\Entity\Reminder::class, $id);
+        self::assertNull($fresh?->getNotifiedUrgency());
+        self::assertNull($fresh?->getLastNotifiedAt(), 'Nessuno è stato notificato: niente timestamp');
+    }
+
+    public function testClaimIsCompareAndSwap(): void
+    {
+        $reminder = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('-2 days')]);
+        $repo = static::getContainer()->get(\App\Repository\ReminderRepository::class);
+        $id = (int) $reminder->getId();
+
+        self::assertTrue($repo->claimNotification($id, ReminderUrgency::SOON, null));
+        self::assertFalse($repo->claimNotification($id, ReminderUrgency::SOON, null), 'già preso');
+        self::assertTrue($repo->claimNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON));
+
+        $repo->releaseNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON);
+        self::assertTrue($repo->claimNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON), 'rilasciato: si può riprovare');
+    }
+
     /**
      * @return array{0: \App\Entity\Vehicle, 1: \App\Entity\Organization}
      */
@@ -220,11 +288,13 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
     {
         $vehicle = VehicleFactory::createOne(['initialKm' => $initialKm]);
         $org = $vehicle->getOrganization();
+        $owner = UserFactory::createOne(['email' => $email]);
         OrganizationMemberFactory::createOne([
             'organization' => $org,
-            'user' => UserFactory::createOne(['email' => $email]),
+            'user' => $owner,
             'role' => OrgRole::OWNER,
         ]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $vehicle, 'user' => $owner]);
 
         return [$vehicle, $org];
     }

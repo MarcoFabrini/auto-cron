@@ -6,11 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18n from '@/i18n';
 import { authFetch } from '@/api/client';
 import { QuickAddSheet } from './QuickAddSheet';
+import type { Vehicle } from '@/api/types/vehicle';
 
 vi.mock('@/api/client', () => ({ authFetch: vi.fn() }));
 const mockedAuthFetch = vi.mocked(authFetch);
 
-const vehicle = (id: number, name: string) => ({
+const vehicle = (id: number, name: string, ownership: Vehicle['ownership'] = 'owned'): Vehicle => ({
   id,
   name,
   brand: 'Fiat',
@@ -23,6 +24,12 @@ const vehicle = (id: number, name: string) => ({
   secondaryFuelType: null,
   initialKm: 0,
   notes: null,
+  ownership,
+  permissions: {
+    canEdit: ownership !== 'shared',
+    canDelete: ownership !== 'shared',
+    canShare: ownership !== 'shared',
+  },
 });
 
 function Where() {
@@ -75,5 +82,17 @@ describe('QuickAddSheet', () => {
     await user.click(await screen.findByRole('button', { name: 'Indietro' }));
 
     expect(await screen.findByRole('button', { name: /Nuovo veicolo/ })).toBeInTheDocument();
+  });
+
+  it('non propone i veicoli condivisi in sola lettura', async () => {
+    mockedAuthFetch.mockResolvedValue([vehicle(4, 'Panda'), vehicle(5, 'Ducati', 'shared')]);
+    const user = userEvent.setup();
+    renderSheet();
+
+    // Resta un solo veicolo modificabile: si salta la scelta e si va dritti su Panda.
+    await user.click(await screen.findByText('Nuovo rifornimento'));
+
+    expect(screen.getByTestId('where')).toHaveTextContent('/refueling/new?vehicleId=4');
+    expect(screen.queryByText('Ducati')).not.toBeInTheDocument();
   });
 });

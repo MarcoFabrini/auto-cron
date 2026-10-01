@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   archiveVehicle,
+  unarchiveVehicle,
   createVehicle,
   deleteVehicle,
   getVehicle,
@@ -35,7 +36,16 @@ export function useVehicle(id: number) {
   });
 }
 
-/** Statistiche veicolo (km attuali, consumo, costi). Stessa chiave della dashboard. */
+/**
+ * Se l'utente può modificare il veicolo e i suoi dati (record, allegati, promemoria):
+ * `undefined` finché non è noto, `false` per un veicolo condiviso in sola lettura.
+ * Il backend applica comunque i voter: qui serve solo a non mostrare azioni che darebbero 403.
+ */
+export function useCanEditVehicle(vehicleId: number): boolean | undefined {
+  const { data } = useVehicle(vehicleId);
+  return data?.permissions.canEdit;
+}
+
 /** Chiave delle statistiche di un veicolo (km attuali, consumi, costi): condivisa da dettaglio, dashboard e badge promemoria. */
 export const vehicleStatsKey = (id: number) => [...vehicleKeys.detail(id), 'stats'] as const;
 
@@ -77,7 +87,25 @@ export function useDeleteVehicle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteVehicle(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
+      qc.removeQueries({ queryKey: vehicleKeys.detail(id) });
+      qc.removeQueries({ queryKey: vehicleStatsKey(id) });
+      // Il veicolo cancellato porta via i figli (cascade): le loro liste in cache sono stale.
+      // Radici letterali per non creare import circolari con gli hook dei figli.
+      for (const root of ['maintenances', 'refuelings', 'expenses', 'reminders', 'attachments']) {
+        void qc.invalidateQueries({ queryKey: [root] });
+      }
+    },
+  });
+}
+
+export function useUnarchiveVehicle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => unarchiveVehicle(id),
+    onSuccess: (_data, id) => {
+      void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
     },
   });

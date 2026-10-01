@@ -19,16 +19,17 @@ final class MaintenanceRequest
         #[Assert\Date]
         public string $performedAt = '',
 
-        #[Assert\PositiveOrZero]
+        #[Assert\Range(min: 0, max: 9_999_999)]
         public int $km = 0,
 
         public MaintenanceType $type = MaintenanceType::OTHER,
         public MaintenanceCategory $category = MaintenanceCategory::SCHEDULED,
 
         #[Assert\NotBlank]
+        #[Assert\Length(max: 5000)]
         public string $description = '',
 
-        #[DecimalString(maxDecimals: 2, message: 'validation.amount_format')]
+        #[DecimalString(maxDecimals: 2, maxIntegerDigits: 8, allowZero: true, message: 'validation.amount_format')]
         public ?string $cost = null,
 
         #[Assert\Length(max: 200)]

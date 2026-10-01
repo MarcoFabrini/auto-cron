@@ -10,11 +10,11 @@ use App\Enum\ReminderUrgency;
 use App\Message\SendReminderNotificationMessage;
 use App\Repository\OrganizationMemberRepository;
 use App\Repository\ReminderRepository;
+use App\Service\AppClock;
 use App\Service\AppMailer;
 use App\Service\MailBuilder;
 use App\Service\Push\PushDispatcher;
 use App\Service\Push\PushPayload;
-use App\Service\VehicleAccessChecker;
 use App\Service\VehicleStatsService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -25,8 +25,8 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  *
  * Ricontrolla l'urgenza al momento dell'invio (il promemoria può essere stato completato,
  * modificato o già notificato da un doppione in coda) e manda push (a tutti i device) + email
- * agli utenti che possono VEDERE il veicolo: owner/admin dell'org e chi ha una condivisione
- * accettata. Un membro senza accesso al veicolo non riceve nulla.
+ * al PROPRIETARIO del veicolo. Owner/admin dell'org (che vedono i veicoli altrui) e chi ha il
+ * veicolo in condivisione (sola lettura) non ricevono nulla: ognuno solo i propri veicoli.
  */
 #[AsMessageHandler]
 final class SendReminderNotificationHandler
@@ -34,13 +34,13 @@ final class SendReminderNotificationHandler
     public function __construct(
         private readonly ReminderRepository $reminderRepo,
         private readonly OrganizationMemberRepository $memberRepo,
-        private readonly VehicleAccessChecker $access,
         private readonly VehicleStatsService $vehicleStats,
         private readonly PushDispatcher $pushDispatcher,
         private readonly AppMailer $mailer,
         private readonly MailBuilder $mailBuilder,
         private readonly EntityManagerInterface $em,
         private readonly LoggerInterface $logger,
+        private readonly AppClock $clock,
     ) {
     }
 
@@ -57,25 +57,60 @@ final class SendReminderNotificationHandler
 
         $vehicle = $reminder->getVehicle();
         $currentKm = $reminder->getDueKm() !== null ? $this->vehicleStats->currentKm($vehicle) : null;
-        $urgency = $reminder->urgency($currentKm, new \DateTimeImmutable('today'));
+        $urgency = $reminder->urgency($currentKm, $this->clock->today());
         if (!$reminder->needsNotification($urgency)) {
             return; // niente in scadenza, o questo livello è già stato notificato
         }
 
+        // Claim atomico PRIMA dell'invio: worker concorrenti o retry dopo un crash non duplicano.
+        $previous = $reminder->getNotifiedUrgency();
+        $previousNotifiedAt = $reminder->getLastNotifiedAt();
+        if (!$this->reminderRepo->claimNotification((int) $reminder->getId(), $urgency, $previous)) {
+            return; // un altro worker l'ha già presa in carico
+        }
+        $this->em->refresh($reminder);
+
         $payload = $this->buildPushPayload($reminder, $urgency, $currentKm);
 
-        foreach ($this->memberRepo->findAcceptedByOrganization($reminder->getOrganization()) as $member) {
-            $user = $member->getUser();
-            if (!$this->access->canView($user, $vehicle)) {
-                continue;
+        $recipients = 0;
+        $delivered = 0;
+        try {
+            // Una query sola per i destinatari (il proprietario, esclusi gli account anonimizzati).
+            foreach ($this->memberRepo->findNotificationRecipients($reminder->getOrganization(), $vehicle) as $member) {
+                $user = $member->getUser();
+                ++$recipients;
+                $delivered += $this->sendPush($user, $payload);
+                if ($this->sendEmail($user, $reminder, $urgency, $currentKm)) {
+                    ++$delivered;
+                }
             }
-            $this->sendPush($user, $payload);
-            $this->sendEmail($user, $reminder, $urgency, $currentKm);
+        } catch (\Throwable $e) {
+            // Errore imprevisto a metà invio (query, flush di PushDispatcher...): senza rilascio il
+            // retry troverebbe il livello già "notificato" e uscirebbe in silenzio.
+            $this->release($reminder, $urgency, $previous, $previousNotifiedAt);
+
+            throw $e;
         }
 
-        // Una notifica per livello: il prossimo invio solo se l'urgenza sale (o cambiano le scadenze).
-        $reminder->markNotified($urgency);
-        $this->em->flush();
+        // Nulla è partito (né email né push): rilascia il claim e lascia riprovare a Messenger,
+        // altrimenti il livello risulterebbe notificato senza che nessuno l'abbia ricevuto.
+        // Se almeno un canale ha consegnato non si ritenta, per non duplicare push ed email.
+        if ($recipients > 0 && $delivered === 0) {
+            $this->release($reminder, $urgency, $previous, $previousNotifiedAt);
+
+            throw new \RuntimeException(sprintf('Reminder %d: notification delivery failed for all recipients', (int) $reminder->getId()));
+        }
+    }
+
+    private function release(Reminder $reminder, ReminderUrgency $claimed, ?ReminderUrgency $previous, ?\DateTimeImmutable $previousNotifiedAt): void
+    {
+        try {
+            $this->reminderRepo->releaseNotification((int) $reminder->getId(), $claimed, $previous, $previousNotifiedAt);
+            $this->em->refresh($reminder);
+        } catch (\Throwable $e) {
+            // EntityManager chiuso o DB irraggiungibile: non si può fare di più, l'errore originale resta.
+            $this->logger->error('Reminder claim release failed', ['id' => $reminder->getId(), 'error' => $e->getMessage()]);
+        }
     }
 
     private function buildPushPayload(Reminder $r, ReminderUrgency $urgency, ?int $currentKm): PushPayload
@@ -105,30 +140,36 @@ final class SendReminderNotificationHandler
         return number_format($km, 0, ',', '.').' km';
     }
 
-    private function sendPush(User $user, PushPayload $payload): void
+    /** @return int consegne push riuscite */
+    private function sendPush(User $user, PushPayload $payload): int
     {
         try {
-            $this->pushDispatcher->notifyUser($user, $payload);
+            return $this->pushDispatcher->notifyUser($user, $payload);
         } catch (\Throwable $e) {
             $this->logger->error('Reminder push failed', [
                 'user_id' => $user->getId(),
                 'error' => $e->getMessage(),
             ]);
+
+            return 0;
         }
     }
 
-    private function sendEmail(User $user, Reminder $r, ReminderUrgency $urgency, ?int $currentKm): void
+    private function sendEmail(User $user, Reminder $r, ReminderUrgency $urgency, ?int $currentKm): bool
     {
         try {
             $email = $this->mailBuilder->reminder($user, $r, $urgency, $currentKm)->to($user->getEmail());
             $this->mailer->send($email);
+
+            return true;
         } catch (\Throwable $e) {
             $this->logger->error('Reminder email failed', [
                 'user_id' => $user->getId(),
                 'email' => $user->getEmail(),
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
-
 }

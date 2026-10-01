@@ -24,6 +24,7 @@ import {
 import { expenseSchema, type ExpenseFormData } from '@/schemas/expense.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
+import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
 import { todayIso } from '@/lib/format';
 
 export interface ExpenseFormProps {
@@ -47,21 +48,24 @@ export function ExpenseForm({
 }: ExpenseFormProps) {
   const { t } = useTranslation();
 
+  const initialValues: ExpenseFormData = {
+    vehicleId,
+    occurredAt: defaultValues?.occurredAt ?? todayIso(),
+    category: defaultValues?.category ?? 'other',
+    description: defaultValues?.description ?? '',
+    amount: defaultValues?.amount ?? '',
+    recurring: defaultValues?.recurring ?? false,
+    recurringPeriod: defaultValues?.recurringPeriod ?? null,
+    notes: defaultValues?.notes ?? null,
+  };
+
   const form = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
-    defaultValues: {
-      vehicleId,
-      occurredAt: defaultValues?.occurredAt ?? todayIso(),
-      category: defaultValues?.category ?? 'other',
-      description: defaultValues?.description ?? '',
-      amount: defaultValues?.amount ?? '',
-      recurring: defaultValues?.recurring ?? false,
-      recurringPeriod: defaultValues?.recurringPeriod ?? null,
-      notes: defaultValues?.notes ?? null,
-    },
+    defaultValues: initialValues,
   });
+  useResyncPristineForm(form, defaultValues, initialValues);
 
-  useServerFieldErrors(form, error);
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   const recurring = useWatch({ control: form.control, name: 'recurring' });
   const errors = form.formState.errors;
@@ -168,7 +172,7 @@ export function ExpenseForm({
         )}
       </FormField>
 
-      {error instanceof ApiError && error.title !== 'validation_failed' && (
+      {error instanceof ApiError && (error.title !== 'validation_failed' || hasUnmapped) && (
         <Alert variant="error">
           {t(`errors.${error.title}`, { defaultValue: error.detail ?? error.title })}
         </Alert>

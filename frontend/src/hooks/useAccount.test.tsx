@@ -49,7 +49,10 @@ describe('useAccount mutations', () => {
 
   it('useAcceptInvitation accepts then reloads /me into the store', async () => {
     const me = { id: 1, email: 'a@b.it', firstName: 'A', emailVerified: true } as never;
-    mockedAuthFetch.mockResolvedValueOnce(undefined).mockResolvedValueOnce(me);
+    mockedAuthFetch
+      .mockResolvedValueOnce({ status: 'ok', organizationId: 7 })
+      .mockResolvedValueOnce({ access_token: 'token-org-7' })
+      .mockResolvedValueOnce(me);
     const { result } = renderHook(() => useAcceptInvitation(), { wrapper });
 
     result.current.mutate({ token: 'inv-1' });
@@ -60,7 +63,14 @@ describe('useAccount mutations', () => {
       '/api/auth/invitation/accept',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ token: 'inv-1' }) }),
     );
-    expect(mockedAuthFetch).toHaveBeenNthCalledWith(2, '/api/auth/me');
+    // passa all'organizzazione appena accettata, poi ricarica /me
+    expect(mockedAuthFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/auth/switch-org',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ organizationId: 7 }) }),
+    );
+    expect(mockedAuthFetch).toHaveBeenNthCalledWith(3, '/api/auth/me');
+    expect(useAuthStore.getState().accessToken).toBe('token-org-7');
     expect(useAuthStore.getState().user).toBe(me);
   });
 });

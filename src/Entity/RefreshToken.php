@@ -34,6 +34,17 @@ class RefreshToken
     #[ORM\Column(name: 'revoked_at', type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $revokedAt = null;
 
+    /**
+     * Valore in chiaro del token, presente SOLO sull'istanza appena emessa da
+     * {@see \App\Service\RefreshTokenService::issue()}: serve a consegnarlo al client (cookie/body)
+     * e non viene mai persistito. In DB c'è solo `token` = sha256 del valore in chiaro.
+     */
+    private ?string $plainToken = null;
+
+    /** Org attiva della sessione: sopravvive alla rotazione, così il refresh non riporta alla prima org. */
+    #[ORM\Column(name: 'active_organization_id', type: 'integer', nullable: true)]
+    private ?int $activeOrganizationId = null;
+
     public function __construct(User $user, string $token, \DateTimeImmutable $expiresAt)
     {
         $this->user = $user;
@@ -52,9 +63,20 @@ class RefreshToken
         return $this->user;
     }
 
+    /** Hash (sha256) del token, come salvato in DB. */
     public function getToken(): string
     {
         return $this->token;
+    }
+
+    public function getPlainToken(): string
+    {
+        return $this->plainToken ?? throw new \LogicException('Plain refresh token is only available right after issue().');
+    }
+
+    public function setPlainToken(string $plainToken): void
+    {
+        $this->plainToken = $plainToken;
     }
 
     public function getExpiresAt(): \DateTimeImmutable
@@ -70,6 +92,16 @@ class RefreshToken
     public function getRevokedAt(): ?\DateTimeImmutable
     {
         return $this->revokedAt;
+    }
+
+    public function getActiveOrganizationId(): ?int
+    {
+        return $this->activeOrganizationId;
+    }
+
+    public function setActiveOrganizationId(?int $id): void
+    {
+        $this->activeOrganizationId = $id;
     }
 
     public function revoke(): void

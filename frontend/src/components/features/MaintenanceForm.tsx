@@ -22,6 +22,7 @@ import {
 import { maintenanceSchema, type MaintenanceFormData } from '@/schemas/maintenance.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
+import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
 import { todayIso } from '@/lib/format';
 
 export interface MaintenanceFormProps {
@@ -48,21 +49,24 @@ export function MaintenanceForm({
 }: MaintenanceFormProps) {
   const { t } = useTranslation();
 
+  const initialValues: MaintenanceFormData = {
+    vehicleId,
+    performedAt: defaultValues?.performedAt ?? todayIso(),
+    km: defaultValues?.km ?? defaultKm ?? 0,
+    type: defaultValues?.type ?? 'oil_change',
+    category: defaultValues?.category ?? 'scheduled',
+    description: defaultValues?.description ?? '',
+    cost: defaultValues?.cost ?? null,
+    workshop: defaultValues?.workshop ?? null,
+  };
+
   const form = useForm<MaintenanceFormData>({
     resolver: zodResolver(maintenanceSchema),
-    defaultValues: {
-      vehicleId,
-      performedAt: defaultValues?.performedAt ?? todayIso(),
-      km: defaultValues?.km ?? defaultKm ?? 0,
-      type: defaultValues?.type ?? 'oil_change',
-      category: defaultValues?.category ?? 'scheduled',
-      description: defaultValues?.description ?? '',
-      cost: defaultValues?.cost ?? null,
-      workshop: defaultValues?.workshop ?? null,
-    },
+    defaultValues: initialValues,
   });
+  useResyncPristineForm(form, defaultValues, initialValues);
 
-  useServerFieldErrors(form, error);
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   // dirtyFields è dietro un Proxy: va letto in fase di render per attivare
   // la subscription, altrimenti nell'effect sotto risulta sempre stale.
@@ -175,7 +179,7 @@ export function MaintenanceForm({
         </FormField>
       </div>
 
-      {error instanceof ApiError && error.title !== 'validation_failed' && (
+      {error instanceof ApiError && (error.title !== 'validation_failed' || hasUnmapped) && (
         <Alert variant="error">
           {t(`errors.${error.title}`, { defaultValue: error.detail ?? error.title })}
         </Alert>

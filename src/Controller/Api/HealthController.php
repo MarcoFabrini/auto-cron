@@ -68,14 +68,15 @@ final class HealthController extends AbstractController
         );
     }
 
-    /** @return array{ok: bool, error?: string} */
+    /** @return array{ok: bool} */
     private function checkDatabase(): array
     {
         try {
             $this->db->executeQuery('SELECT 1');
             return ['ok' => true];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
+            // Endpoint pubblico: il messaggio del driver può contenere host, utente e nome del DB.
+            return ['ok' => false];
         }
     }
 }

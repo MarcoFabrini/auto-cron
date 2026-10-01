@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service\Gdpr;
 
+use App\Entity\Attachment;
+use App\Entity\AuditLog;
+use App\Entity\OrganizationInvitation;
 use App\Entity\User;
 use App\Enum\OrgRole;
 use App\Repository\PushSubscriptionRepository;
 use App\Repository\RefreshTokenRepository;
+use App\Service\Storage\AttachmentStorageInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
@@ -25,8 +29,10 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *    pseudo-randomica `deleted-<id>-<hash>@anonymized.local`.
  * 3. Revoke tutti i refresh token attivi.
  * 4. Delete tutte le push subscription (token mobile, endpoint web).
- * 5. Per ogni org dove l'utente è unico membro → delete org (cascade).
+ * 5. Per ogni org dove l'utente è unico membro → delete org (cascade) e dei suoi file allegati.
  *    Negli altri casi le memberships restano (storia partecipazione).
+ * 6. Rimuove il file avatar, azzera IP/user-agent negli audit log dell'utente ed elimina gli
+ *    inviti indirizzati alla sua vecchia email (PII residua fuori dalla riga `users`).
  *
  * Il record `users` resta in DB con dati anonimi per:
  * - mantenere FK attachments.uploaded_by, vehicle_shares.invited_by
@@ -40,6 +46,7 @@ final class GdprDeleteService
         private readonly RefreshTokenRepository $tokenRepo,
         private readonly PushSubscriptionRepository $pushRepo,
         private readonly UserPasswordHasherInterface $hasher,
+        private readonly AttachmentStorageInterface $storage,
     ) {
     }
 
@@ -57,8 +64,33 @@ final class GdprDeleteService
 
         $this->assertSafeToDelete($user);
 
+        /** @var list<string> $filesToDelete file fisici da eliminare solo dopo il commit del DB */
+        $filesToDelete = [];
+        // Tutto o niente: se il flush finale fallisse, audit log e inviti già modificati resterebbero
+        // in uno stato intermedio con l'utente non anonimizzato.
+        $summary = $this->em->wrapInTransaction(fn (): array => $this->anonymizeInTransaction($user, $userId, $filesToDelete));
+
+        foreach ($filesToDelete as $storedPath) {
+            try {
+                $this->storage->delete($storedPath);
+            } catch (\Throwable) {
+                // File già assente o non rimovibile: il DB è già anonimizzato, non blocchiamo il diritto all'oblio.
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @param list<string> $filesToDelete riempito con i file da rimuovere dopo il commit
+     *
+     * @return array{anonymized_user_id: int, revoked_tokens: int, deleted_push_subs: int, deleted_orgs: int, kept_memberships: int}
+     */
+    private function anonymizeInTransaction(User $user, int $userId, array &$filesToDelete): array
+    {
         $deletedOrgs = 0;
         $keptMemberships = 0;
+        $oldEmail = $user->getEmail();
 
         // Drop org dove user è unico membro (solo proprietario, no altri member)
         foreach ($user->getMemberships()->toArray() as $m) {
@@ -67,6 +99,11 @@ final class GdprDeleteService
             $otherMembers = array_filter($allMembers, fn ($x) => $x->getUser()->getId() !== $userId);
 
             if ($otherMembers === []) {
+                /** @var list<string> $paths */
+                $paths = $this->em->createQuery('SELECT a.storedPath FROM '.Attachment::class.' a WHERE a.organization = :org')
+                    ->setParameter('org', $org)
+                    ->getSingleColumnResult();
+                array_push($filesToDelete, ...$paths);
                 $this->em->remove($org);
                 ++$deletedOrgs;
             } else {
@@ -85,8 +122,21 @@ final class GdprDeleteService
         }
         $deletedPushSubs = count($pushSubs);
 
+        if ($user->getAvatarPath() !== null) {
+            $filesToDelete[] = $user->getAvatarPath();
+            $user->setAvatarPath(null);
+        }
+
+        // PII residua fuori da `users`: metadati tecnici negli audit log e inviti con la vecchia email
+        $this->em->createQuery('UPDATE '.AuditLog::class.' l SET l.ipAddress = NULL, l.userAgent = NULL WHERE l.user = :user')
+            ->setParameter('user', $user)
+            ->execute();
+        $this->em->createQuery('DELETE FROM '.OrganizationInvitation::class.' i WHERE LOWER(i.email) = :email')
+            ->setParameter('email', mb_strtolower($oldEmail))
+            ->execute();
+
         // Anonymize PII
-        $anonEmail = sprintf('deleted-%d-%s@anonymized.local', $userId, bin2hex(random_bytes(8)));
+        $anonEmail = sprintf('deleted-%d-%s%s', $userId, bin2hex(random_bytes(8)), User::ANONYMIZED_EMAIL_SUFFIX);
         $randomPassword = bin2hex(random_bytes(32));
         $user
             ->setEmail($anonEmail)

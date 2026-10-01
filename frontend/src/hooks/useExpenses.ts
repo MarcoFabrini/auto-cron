@@ -47,8 +47,8 @@ export function useUpdateExpense(id: number) {
   return useMutation({
     mutationFn: (body: UpdateExpenseDto) => updateExpense(id, body),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: expenseKeys.detail(id) });
-      void qc.invalidateQueries({ queryKey: expenseKeys.byVehicle(vars.vehicleId) });
+      // Il PUT può spostare la voce su un altro veicolo: si invalida tutto il dominio, non solo il veicolo corrente.
+      void qc.invalidateQueries({ queryKey: expenseKeys.all });
       invalidateVehicleStats(qc, vars.vehicleId);
     },
   });
@@ -59,7 +59,7 @@ export function useDeleteExpense(vehicleId: number) {
   return useMutation({
     mutationFn: (id: number) => deleteExpense(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: expenseKeys.byVehicle(vehicleId) });
+      void qc.invalidateQueries({ queryKey: expenseKeys.all });
       invalidateVehicleStats(qc, vehicleId);
     },
   });

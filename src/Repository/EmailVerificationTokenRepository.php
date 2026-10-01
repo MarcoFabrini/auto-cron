@@ -48,4 +48,21 @@ class EmailVerificationTokenRepository extends ServiceEntityRepository
             ->getQuery()
             ->execute();
     }
+
+    /**
+     * Marca il token come usato SOLO se non lo è già (UPDATE condizionale): true per la sola richiesta
+     * che lo consuma. Due richieste concorrenti con lo stesso token non passano entrambe.
+     */
+    public function consume(EmailVerificationToken $token): bool
+    {
+        return $this->createQueryBuilder('t')
+            ->update()
+            ->set('t.usedAt', ':now')
+            ->where('t.id = :id')
+            ->andWhere('t.usedAt IS NULL')
+            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('id', $token->getId())
+            ->getQuery()
+            ->execute() === 1;
+    }
 }

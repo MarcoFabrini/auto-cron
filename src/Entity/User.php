@@ -80,6 +80,9 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(targetEntity: OrganizationMember::class, mappedBy: 'user', cascade: ['persist', 'remove'], orphanRemoval: true)]
     private Collection $memberships;
 
+    /** Email degli account anonimizzati (GDPR Art. 17): `deleted-<id>-<hash>@anonymized.local`. */
+    public const ANONYMIZED_EMAIL_SUFFIX = '@anonymized.local';
+
     public function __construct()
     {
         $this->memberships = new ArrayCollection();
@@ -164,6 +167,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     {
         $this->emailVerifiedAt ??= new \DateTimeImmutable();
         return $this;
+    }
+
+    /** Nuova email = non ancora verificata. */
+    public function resetEmailVerification(): self
+    {
+        $this->emailVerifiedAt = null;
+        return $this;
+    }
+
+    public function isAnonymized(): bool
+    {
+        return str_ends_with($this->email, self::ANONYMIZED_EMAIL_SUFFIX);
     }
 
     public function getAvatarPath(): ?string

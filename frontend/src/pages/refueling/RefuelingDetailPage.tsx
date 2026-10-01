@@ -16,6 +16,7 @@ import {
 import { PageHeader } from '@/components/layout';
 import { AttachmentsSection, ConfirmDialog, FuelTypeBadge } from '@/components/features';
 import { useDeleteRefueling, useRefueling } from '@/hooks/useRefuelings';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 import { formatCurrency, formatDate, formatDecimal, formatKm } from '@/lib/format';
@@ -29,6 +30,8 @@ export function RefuelingDetailPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useRefueling(refuelingId);
+  // Veicolo condiviso in sola lettura: niente modifica, eliminazione, allegati.
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
   const deleteMutation = useDeleteRefueling(data?.vehicleId ?? 0);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -54,21 +57,23 @@ export function RefuelingDetailPage() {
         description={formatDate(data.refueledAt)}
         onBack={() => navigate(`/refueling?vehicleId=${data.vehicleId}`)}
         action={
-          <>
-            <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
-              <Link to={`/refueling/${data.id}/edit`}>
-                <Pencil />
-              </Link>
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => setConfirmOpen(true)}
-              aria-label={t('actions.delete')}
-            >
-              <Trash2 />
-            </Button>
-          </>
+          canEdit ? (
+            <>
+              <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
+                <Link to={`/refueling/${data.id}/edit`}>
+                  <Pencil />
+                </Link>
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => setConfirmOpen(true)}
+                aria-label={t('actions.delete')}
+              >
+                <Trash2 />
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -117,7 +122,7 @@ export function RefuelingDetailPage() {
           <CardDescription>{t('attachment.description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <AttachmentsSection entityType="refueling" entityId={data.id} />
+          <AttachmentsSection entityType="refueling" entityId={data.id} readOnly={!canEdit} />
         </CardContent>
       </Card>
 

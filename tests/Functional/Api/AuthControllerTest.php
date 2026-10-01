@@ -140,6 +140,26 @@ final class AuthControllerTest extends ApiTestCase
         self::assertTrue($refresh->isHttpOnly());
     }
 
+    public function testRefreshTokenIsStoredHashedNotInClear(): void
+    {
+        UserFactory::createOne(['email' => 'hash@test.it']);
+        $this->jsonRequest('POST', '/api/auth/login', [
+            'email' => 'hash@test.it',
+            'password' => UserFactory::DEFAULT_PASSWORD,
+        ], clientType: 'mobile');
+        $plain = $this->jsonBody()['refresh_token'];
+
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $stored = $em->getConnection()->fetchFirstColumn('SELECT token FROM refresh_tokens');
+
+        self::assertNotContains($plain, $stored, 'Il token in chiaro non deve stare nel DB');
+        self::assertContains(hash('sha256', $plain), $stored);
+
+        // ...e funziona ancora per il refresh
+        $this->jsonRequest('POST', '/api/auth/refresh', ['refreshToken' => $plain], clientType: 'mobile');
+        self::assertResponseIsSuccessful();
+    }
+
     public function testLoginMobileReturnsBothTokensInBodyNoCookie(): void
     {
         UserFactory::createOne(['email' => 'mobile@test.it']);
@@ -278,6 +298,7 @@ final class AuthControllerTest extends ApiTestCase
             'firstName' => 'Anna',
             'lastName' => 'Bianchi',
             'locale' => 'en',
+            'currentPassword' => UserFactory::DEFAULT_PASSWORD,
         ], accessToken: $token);
 
         self::assertResponseIsSuccessful();
@@ -304,10 +325,55 @@ final class AuthControllerTest extends ApiTestCase
             'firstName' => 'A',
             'lastName' => 'B',
             'locale' => 'it',
+            'currentPassword' => UserFactory::DEFAULT_PASSWORD,
         ], accessToken: $token);
 
         self::assertResponseStatusCodeSame(409);
         self::assertSame('auth.email_taken', $this->jsonBody()['title']);
+    }
+
+    public function testUpdateProfileEmailChangeRequiresCurrentPassword(): void
+    {
+        [$user, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('PUT', '/api/auth/profile', [
+            'email' => 'takeover@test.it',
+            'firstName' => 'A',
+            'lastName' => 'B',
+            'locale' => 'it',
+        ], accessToken: $token);
+        self::assertResponseStatusCodeSame(400);
+
+        $this->jsonRequest('PUT', '/api/auth/profile', [
+            'email' => 'takeover@test.it',
+            'firstName' => 'A',
+            'lastName' => 'B',
+            'locale' => 'it',
+            'currentPassword' => 'sbagliata',
+        ], accessToken: $token);
+        self::assertResponseStatusCodeSame(400);
+
+        $fresh = static::getContainer()->get(UserRepository::class)->find($user->getId());
+        self::assertInstanceOf(User::class, $fresh);
+        self::assertNotSame('takeover@test.it', $fresh->getEmail());
+    }
+
+    public function testUpdateProfileEmailChangeResetsVerification(): void
+    {
+        [$user, , $token] = $this->createAuthenticatedUser();
+        $user->markEmailVerified();
+        static::getContainer()->get('doctrine')->getManager()->flush();
+
+        $this->jsonRequest('PUT', '/api/auth/profile', [
+            'email' => 'verificami@test.it',
+            'firstName' => 'A',
+            'lastName' => 'B',
+            'locale' => 'it',
+            'currentPassword' => UserFactory::DEFAULT_PASSWORD,
+        ], accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertFalse($this->jsonBody()['user']['emailVerified']);
     }
 
     public function testUpdateProfileKeepingOwnEmailSucceeds(): void

@@ -45,8 +45,8 @@ export function useCreateReminder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateReminderDto) => createReminder(body),
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: reminderKeys.byVehicle(vars.vehicleId) });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: reminderKeys.all });
     },
   });
 }
@@ -55,30 +55,28 @@ export function useUpdateReminder(id: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateReminderDto) => updateReminder(id, body),
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: reminderKeys.detail(id) });
-      void qc.invalidateQueries({ queryKey: reminderKeys.byVehicle(vars.vehicleId) });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: reminderKeys.all });
     },
   });
 }
 
-export function useCompleteReminder(vehicleId: number) {
+export function useCompleteReminder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => completeReminder(id),
-    onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: reminderKeys.detail(data.id) });
-      void qc.invalidateQueries({ queryKey: reminderKeys.byVehicle(vehicleId) });
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: reminderKeys.all });
     },
   });
 }
 
-export function useDeleteReminder(vehicleId: number) {
+export function useDeleteReminder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => deleteReminder(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: reminderKeys.byVehicle(vehicleId) });
+      void qc.invalidateQueries({ queryKey: reminderKeys.all });
     },
   });
 }

@@ -218,6 +218,8 @@ final class AttachmentController extends AbstractController
 
         $response = new BinaryFileResponse($this->storage->absolutePath($attachment->getStoredPath()));
         $response->headers->set('Content-Type', $attachment->getMimeType());
+        // Il file è dell'utente: il browser non deve reinterpretarne il tipo.
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->setContentDisposition(
             ResponseHeaderBag::DISPOSITION_INLINE,
             $this->safeFilename($attachment->getOriginalFilename()),

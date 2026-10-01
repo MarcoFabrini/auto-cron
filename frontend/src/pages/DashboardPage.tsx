@@ -15,6 +15,7 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       {dash.error ? <Alert variant="error">{errorMessage(dash.error)}</Alert> : null}
+      {!dash.error && dash.partial ? <Alert variant="warning">{t('dashboard.partial_totals')}</Alert> : null}
 
       {/* Stat grid */}
       {dash.isLoading ? (
@@ -25,16 +26,22 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-          <StatCard Icon={Car} label={t('nav.vehicles')} value={dash.vehicles.length} />
+          <StatCard Icon={Car} label={t('dashboard.your_vehicles')} value={dash.vehicles.length} />
           <StatCard Icon={Euro} label={t('dashboard.total_cost')} value={formatCurrency(dash.totalCost)} />
           <StatCard Icon={Fuel} label={t('nav.refueling')} value={dash.totalRefuelings} />
           <StatCard Icon={Wrench} label={t('nav.maintenance')} value={dash.totalMaintenances} />
         </div>
       )}
 
+      {!dash.isLoading && dash.excludedCount > 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {t('dashboard.owned_only_hint', { count: dash.excludedCount })}
+        </p>
+      ) : null}
+
       <UpcomingRemindersCard />
 
-      {/* Accesso alla lista veicoli (la home ospiter� grafici/info in futuro) */}
+      {/* Accesso alla lista veicoli (la home ospiterà grafici/info in futuro: solo dash.vehicles, i propri) */}
       <Link
         to="/vehicles"
         className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"

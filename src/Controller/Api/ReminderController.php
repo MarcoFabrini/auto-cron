@@ -6,10 +6,12 @@ namespace App\Controller\Api;
 
 use App\Dto\Request\ReminderRequest;
 use App\Entity\Reminder;
+use App\Entity\User;
 use App\Repository\ReminderRepository;
 use App\Repository\VehicleRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentCleaner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -33,6 +35,7 @@ final class ReminderController extends AbstractController
         private readonly ReminderRepository $repo,
         private readonly VehicleRepository $vehicleRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
+        private readonly AttachmentCleaner $attachmentCleaner,
         private readonly SerializerInterface $serializer,
     ) {
     }
@@ -63,7 +66,8 @@ final class ReminderController extends AbstractController
     }
 
     #[OA\Get(
-        summary: 'Upcoming date-based reminders across all vehicles of the active organization',
+        summary: 'Upcoming date-based reminders of the vehicles the caller owns',
+        description: 'Only vehicles the caller owns (created by them): not vehicles shared with them, nor, for org owner/admin, the other members\' vehicles.',
         parameters: [
             new OA\Parameter(name: 'days', in: 'query', schema: new OA\Schema(type: 'integer', default: 30)),
             new OA\Parameter(name: 'limit', in: 'query', schema: new OA\Schema(type: 'integer', default: 10)),
@@ -76,7 +80,13 @@ final class ReminderController extends AbstractController
         $days = max(1, min(365, (int) $request->query->get('days', 30)));
         $limit = max(1, min(50, (int) $request->query->get('limit', 10)));
 
-        $reminders = $this->repo->findUpcomingForOrganization($this->orgResolver->resolve(), $days, $limit);
+        /** @var User $user */
+        $user = $this->getUser();
+        $org = $this->orgResolver->resolve();
+
+        // Solo i veicoli propri, anche per owner/admin dell'org: le scadenze altrui (o di un
+        // veicolo condiviso in sola lettura) non sono affar suo.
+        $reminders = $this->repo->findUpcomingForOwner($org, $user, $days, $limit);
         return $this->jsonGroups($reminders, ['reminder:list', 'vehicle:nested']);
     }
 
@@ -172,8 +182,7 @@ final class ReminderController extends AbstractController
     {
         $r = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $r);
-        $this->em->remove($r);
-        $this->em->flush();
+        $this->attachmentCleaner->removeRecord($r);
         return new JsonResponse(null, 204);
     }
 

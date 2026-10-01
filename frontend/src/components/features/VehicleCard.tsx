@@ -8,7 +8,7 @@ import type { Vehicle } from '@/api/types/vehicle';
 /**
  * VehicleCard feature — riepilogo veicolo, click apre detail.
  *
- * Mostra: icona + nome + brand/model + plate + fuel badges + archived state.
+ * Mostra: icona + nome + brand/model + plate + fuel badges + archived state + "condiviso" (sola lettura).
  *
  * @example
  * <VehicleCard vehicle={v} />
@@ -34,6 +34,11 @@ export function VehicleCard({ vehicle }: VehicleCardProps) {
             <div className="flex items-center gap-2">
               <h3 className="truncate text-base font-semibold">{vehicle.name}</h3>
               {archived && <Badge variant="outline">{t('vehicle.archived')}</Badge>}
+              {vehicle.ownership === 'shared' && (
+                <Badge variant="secondary" className="shrink-0">
+                  {t('vehicle.shared_read_only')}
+                </Badge>
+              )}
             </div>
             <p className="truncate text-sm text-muted-foreground">
               {vehicle.brand} {vehicle.model} · {vehicle.year}

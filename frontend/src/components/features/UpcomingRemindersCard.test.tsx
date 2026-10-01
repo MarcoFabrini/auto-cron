@@ -76,6 +76,6 @@ describe('UpcomingRemindersCard', () => {
     });
     renderCard();
 
-    expect(await screen.findByText('Nessuna scadenza nei prossimi 30 giorni.')).toBeInTheDocument();
+    expect(await screen.findByText('Nessuna scadenza sui tuoi veicoli nei prossimi 30 giorni.')).toBeInTheDocument();
   });
 });

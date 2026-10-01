@@ -7,8 +7,10 @@ namespace App\Repository;
 use App\Entity\Organization;
 use App\Entity\OrganizationMember;
 use App\Entity\User;
+use App\Entity\Vehicle;
+use App\Entity\VehicleShare;
 use App\Enum\OrgRole;
-
+use App\Enum\ShareRole;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -47,6 +49,31 @@ class OrganizationMemberRepository extends ServiceEntityRepository
     }
 
     /**
+     * Chi riceve le notifiche di un veicolo: il suo proprietario (share `admin` accettato) con
+     * membership accettata, esclusi gli account anonimizzati. Non owner/admin dell'org per i
+     * veicoli altrui, né chi ha il veicolo in condivisione (sola lettura): a ciascuno arrivano
+     * solo le scadenze dei propri veicoli.
+     *
+     * @return list<OrganizationMember>
+     */
+    public function findNotificationRecipients(Organization $org, Vehicle $vehicle): array
+    {
+        return $this->createQueryBuilder('m')
+            ->innerJoin('m.user', 'u')
+            ->addSelect('u')
+            ->innerJoin(VehicleShare::class, 'vs', 'WITH', 'vs.user = m.user AND vs.vehicle = :vehicle AND vs.role = :ownerRole AND vs.acceptedAt IS NOT NULL')
+            ->where('m.organization = :org')
+            ->andWhere('m.acceptedAt IS NOT NULL')
+            ->andWhere('u.email NOT LIKE :anonymized')
+            ->setParameter('org', $org)
+            ->setParameter('vehicle', $vehicle)
+            ->setParameter('ownerRole', ShareRole::ADMIN)
+            ->setParameter('anonymized', '%'.User::ANONYMIZED_EMAIL_SUFFIX)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
      * @return list<OrganizationMember>
      */
     public function findAcceptedByOrganization(Organization $org): array
@@ -77,6 +104,8 @@ class OrganizationMemberRepository extends ServiceEntityRepository
             ->andWhere('m.acceptedAt IS NOT NULL')
             ->andWhere('m.role = :role')
             ->andWhere('m.user != :except')
+            ->andWhere('u.email NOT LIKE :anonymized')
+            ->setParameter('anonymized', '%'.User::ANONYMIZED_EMAIL_SUFFIX)
             ->setParameter('org', $org)
             ->setParameter('role', OrgRole::MEMBER)
             ->setParameter('except', $except)

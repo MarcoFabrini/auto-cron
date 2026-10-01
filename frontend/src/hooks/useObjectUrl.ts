@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 
-/** ObjectURL gestito: crea da blob, revoca al cleanup. */
+/**
+ * ObjectURL gestito: crea da blob, revoca al cleanup.
+ * L'URL è associato al blob che l'ha generato: cambiando blob non si restituisce mai quello vecchio
+ * (già revocato) per il render che precede l'effect, che mostrerebbe un'immagine rotta per un attimo.
+ */
 export function useObjectUrl(blob: Blob | undefined): string | undefined {
-  const [url, setUrl] = useState<string>();
+  const [current, setCurrent] = useState<{ blob: Blob; url: string }>();
   useEffect(() => {
     if (!blob) {
-      setUrl(undefined);
+      setCurrent(undefined);
       return;
     }
-    const next = URL.createObjectURL(blob);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
+    const url = URL.createObjectURL(blob);
+    setCurrent({ blob, url });
+    return () => URL.revokeObjectURL(url);
   }, [blob]);
-  return url;
+  return current && current.blob === blob ? current.url : undefined;
 }

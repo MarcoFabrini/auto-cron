@@ -25,6 +25,22 @@ class RefreshTokenRepository extends ServiceEntityRepository
         return $rt?->isValid() ? $rt : null;
     }
 
+    /** Revoca atomica: true solo per la richiesta che passa per prima (niente doppia rotazione concorrente). */
+    public function revokeIfActive(RefreshToken $token): bool
+    {
+        $affected = $this->createQueryBuilder('rt')
+            ->update()
+            ->set('rt.revokedAt', ':now')
+            ->where('rt.id = :id')
+            ->andWhere('rt.revokedAt IS NULL')
+            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('id', $token->getId())
+            ->getQuery()
+            ->execute();
+
+        return $affected === 1;
+    }
+
     public function countActiveForUser(User $user): int
     {
         return (int) $this->createQueryBuilder('rt')

@@ -18,9 +18,17 @@ interface AuthFetchOptions extends RequestInit {
   skipRefresh?: boolean;
 }
 
-let refreshPromise: Promise<boolean> | null = null;
+/**
+ * Esito del refresh:
+ * - 'ok': nuovo access token in store
+ * - 'invalid': il server ha rifiutato il refresh token (400/401) → sessione davvero finita
+ * - 'unavailable': rete assente o 5xx → la sessione può essere ancora valida, NON fare logout
+ */
+export type RefreshResult = 'ok' | 'invalid' | 'unavailable';
 
-async function refreshAccessToken(): Promise<boolean> {
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+export async function refreshAccessToken(): Promise<RefreshResult> {
   // Coalesce simultaneous refresh attempts
   if (refreshPromise) return refreshPromise;
 
@@ -31,12 +39,13 @@ async function refreshAccessToken(): Promise<boolean> {
         credentials: 'include',
         headers: { 'X-Client-Type': 'web' },
       });
-      if (!res.ok) return false;
+      if (res.status === 400 || res.status === 401) return 'invalid';
+      if (!res.ok) return 'unavailable';
       const data = (await res.json()) as { access_token: string };
       useAuthStore.getState().setAccessToken(data.access_token);
-      return true;
+      return 'ok';
     } catch {
-      return false;
+      return 'unavailable';
     } finally {
       refreshPromise = null;
     }
@@ -66,11 +75,14 @@ async function authFetchResponse(path: string, opts: AuthFetchOptions): Promise<
 
   if (res.status === 401 && !opts.skipRefresh) {
     const refreshed = await refreshAccessToken();
-    if (refreshed) {
+    if (refreshed === 'ok') {
       res = await fetch(`${API_BASE}${path}`, withAuth(opts));
-    } else {
+    } else if (refreshed === 'invalid') {
       useAuthStore.getState().logout();
       throw new ApiError('auth.session_expired', 401);
+    } else {
+      // Rete/5xx sul refresh: la sessione resta, la richiesta fallisce e si potrà riprovare.
+      throw new ApiError('network.unavailable', 503);
     }
   }
 

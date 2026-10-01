@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '@/api/client';
 import { useAuthStore, type User } from '@/stores/useAuthStore';
 
@@ -9,6 +9,8 @@ interface ProfilePayload {
   firstName: string;
   lastName: string;
   locale: 'it' | 'en';
+  /** Obbligatoria se cambia l'email. */
+  currentPassword?: string;
 }
 
 interface AuthLikeResponse {
@@ -109,6 +111,12 @@ export function useVerifyEmail() {
         body: JSON.stringify(payload),
         skipRefresh: true,
       }),
+    onSuccess: () => {
+      // Se l'utente è già dentro, il banner "verifica l'email" deve sparire senza ricaricare.
+      const { status, setUser } = useAuthStore.getState();
+      if (status !== 'authenticated') return;
+      void authFetch<User>('/api/auth/me').then(setUser, () => undefined);
+    },
   });
 }
 
@@ -139,13 +147,31 @@ export function useInvitationPreview(token: string) {
 
 /** Accetta un invito (utente esistente, loggato). Ricarica /me per la nuova membership. */
 export function useAcceptInvitation() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: { token: string }) => {
-      await authFetch<void>('/api/auth/invitation/accept', {
+      const res = await authFetch<{ organizationId?: number } | undefined>('/api/auth/invitation/accept', {
         method: 'POST',
         headers: JSON_HEADERS,
         body: JSON.stringify(payload),
       });
+
+      // Il token in uso opera ancora sulla vecchia organizzazione: si passa a quella appena
+      // accettata, altrimenti l'utente non vedrebbe mai i dati per cui è stato invitato.
+      if (res?.organizationId) {
+        try {
+          const switched = await authFetch<{ access_token: string }>('/api/auth/switch-org', {
+            method: 'POST',
+            headers: JSON_HEADERS,
+            body: JSON.stringify({ organizationId: res.organizationId }),
+          });
+          useAuthStore.getState().setAccessToken(switched.access_token);
+          qc.clear(); // la cache appartiene alla vecchia organizzazione
+        } catch {
+          // L'invito è accettato comunque: l'utente può cambiare organizzazione in seguito.
+        }
+      }
+
       const me = await authFetch<User>('/api/auth/me');
       useAuthStore.getState().setUser(me);
       return me;

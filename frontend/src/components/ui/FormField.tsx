@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react';
 import { Label } from './Label';
 import { cn } from '@/lib/utils';
 
@@ -40,7 +40,7 @@ export function FormField({ label, children, error, hint, required, className }:
         {label}
         {required && <span className="ml-0.5 text-destructive">*</span>}
       </Label>
-      <div aria-describedby={messageId}>{children(id)}</div>
+      {withDescription(children(id), messageId)}
       {error ? (
         <p id={messageId} role="alert" className="text-sm font-medium text-destructive">
           {error}
@@ -52,4 +52,17 @@ export function FormField({ label, children, error, hint, required, className }:
       ) : null}
     </div>
   );
+}
+
+/**
+ * Lo screen reader legge hint/errore insieme al campo solo se `aria-describedby` sta sull'input
+ * stesso, non su un wrapper. Il child è di norma un solo elemento (Input, Textarea, ...): se ne ha già
+ * uno proprio lo lasciamo stare, altrimenti ricevi quello del messaggio.
+ */
+function withDescription(node: ReactNode, messageId: string | undefined): ReactNode {
+  if (!messageId || !isValidElement(node)) return node;
+  const element = node as ReactElement<{ 'aria-describedby'?: string }>;
+  if (element.props['aria-describedby']) return node;
+
+  return cloneElement(element, { 'aria-describedby': messageId });
 }

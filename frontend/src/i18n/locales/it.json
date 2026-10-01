@@ -78,7 +78,8 @@
       "error_title": "Invito non valido",
       "invalid_title": "Link non valido",
       "invalid_description": "Il link di invito è mancante o non valido.",
-      "continue": "Vai alla dashboard"
+      "continue": "Vai alla dashboard",
+      "switch_account": "Esci e continua"
     }
   },
   "actions": {
@@ -103,7 +104,10 @@
     "vehicle_count_one": "{{count}} veicolo",
     "vehicle_count_other": "{{count}} veicoli",
     "upcoming_reminders": "Prossime scadenze",
-    "upcoming_reminders_empty": "Nessuna scadenza nei prossimi 30 giorni."
+    "upcoming_reminders_empty": "Nessuna scadenza sui tuoi veicoli nei prossimi 30 giorni.",
+    "partial_totals": "Alcuni veicoli non si sono caricati: i totali sono parziali.",
+    "owned_only_hint_one": "Totali e scadenze riguardano solo i tuoi veicoli: {{count}} veicolo che vedi ma non è tuo è escluso.",
+    "owned_only_hint_other": "Totali e scadenze riguardano solo i tuoi veicoli: {{count}} veicoli che vedi ma non sono tuoi sono esclusi."
   },
   "quick_add": {
     "open": "Aggiungi",
@@ -470,7 +474,13 @@
       "expenses": "Spese",
       "consumption": "Consumo medio",
       "consumption_unknown": "Servono almeno 2 pieni"
-    }
+    },
+    "archived_no_new_records": "Questo veicolo è archiviato: non si possono aggiungere nuovi record. Ripristinalo per continuare.",
+    "archived_banner": "Questo veicolo è archiviato.",
+    "restore": "Ripristina",
+    "restored": "Veicolo ripristinato",
+    "shared_read_only": "Condiviso · sola lettura",
+    "read_only_no_changes": "Questo veicolo è condiviso con te in sola lettura: puoi vederne i dati ma non modificarli."
   },
   "error_page": {
     "back_home": "Torna alla home",
@@ -503,12 +513,24 @@
   "errors": {
     "common": {
       "invalid_date": "Data non valida",
-      "invalid_decimal": "Numero non valido (es. 12,50)"
+      "invalid_decimal": "Numero non valido (es. 12,50)",
+      "decimal_too_large": "Numero troppo grande",
+      "must_be_positive": "Deve essere maggiore di zero",
+      "km_too_large": "Chilometri non validi (max 9.999.999)",
+      "required": "Campo obbligatorio",
+      "invalid_number": "Numero non valido",
+      "must_be_integer": "Inserisci un numero intero",
+      "invalid_value": "Valore non valido",
+      "too_short": "Troppo corto",
+      "too_long": "Troppo lungo",
+      "too_small": "Valore troppo basso",
+      "too_big": "Valore troppo alto"
     },
     "push": {
       "not_configured": "Notifiche push non configurate: genera prima le chiavi VAPID e abilitale",
       "no_subscription": "Nessun device sottoscritto: attiva prima le notifiche su questo browser",
-      "no_keys": "Genera prima una coppia VAPID prima di abilitare le notifiche"
+      "no_keys": "Genera prima una coppia VAPID prima di abilitare le notifiche",
+      "endpoint_not_allowed": "Servizio di notifica non supportato"
     },
     "settings": {
       "instance_admin_required": "Solo l'amministratore dell'istanza (il primo utente registrato) può modificare queste impostazioni"
@@ -520,7 +542,8 @@
       "email_taken": "Email già registrata",
       "invalid_current_password": "La password attuale non è corretta",
       "invalid_reset_token": "Il link di reset è scaduto o non valido",
-      "registration_closed": "La registrazione libera è chiusa su questa istanza: chiedi un invito a chi la amministra"
+      "registration_closed": "La registrazione libera è chiusa su questa istanza: chiedi un invito a chi la amministra",
+      "try_again": "Il server è occupato, riprova tra un istante."
     },
     "access": {
       "org_admin_required": "Solo gli amministratori dell'organizzazione possono fare questa operazione."
@@ -535,7 +558,8 @@
       "fuel_type": {
         "required": "Seleziona il carburante"
       },
-      "not_found": "Rifornimento non trovato"
+      "not_found": "Rifornimento non trovato",
+      "fuel_type_not_supported": "Questo veicolo non usa il carburante selezionato"
     },
     "expense": {
       "vehicle": {
@@ -550,7 +574,9 @@
       "recurring_period": {
         "required": "Seleziona la periodicità"
       },
-      "not_found": "Spesa non trovata"
+      "not_found": "Spesa non trovata",
+      "recurring_period_required": "Scegli la frequenza della spesa ricorrente",
+      "recurring_period_unexpected": "La frequenza vale solo per le spese ricorrenti"
     },
     "reminder": {
       "vehicle": {
@@ -635,7 +661,7 @@
       "404": "Risorsa non trovata",
       "500": "Errore server"
     },
-    "validation_failed": "Verifica i dati inseriti",
+    "validation_failed": "Controlla i dati inseriti: il server non li ha accettati.",
     "unknown": "Errore inatteso",
     "account": {
       "first_name": {
@@ -666,6 +692,21 @@
       "not_org_member": "Selezione non valida: puoi condividere solo con membri dell'organizzazione.",
       "cannot_remove_owner": "Il proprietario del veicolo non può essere rimosso.",
       "not_found": "Condivisione non trovata."
+    },
+    "network": {
+      "unavailable": "Server non raggiungibile"
+    },
+    "member": {
+      "owner_role_forbidden": "Solo un proprietario può assegnare il ruolo di proprietario"
+    },
+    "validation": {
+      "decimal_format": "Numero non valido (es. 12,50)",
+      "amount_format": "Importo non valido (max 8 cifre intere e 2 decimali)",
+      "liters_format": "Litri non validi (max 5 cifre intere e 3 decimali)",
+      "price_format": "Prezzo non valido (max 2 cifre intere e 4 decimali)"
+    },
+    "org": {
+      "slug_format": "Il nome non può essere usato per l'indirizzo dell'organizzazione"
     }
   },
   "account": {
@@ -690,7 +731,8 @@
     "edit_organization_description": "Rinomina la tua organizzazione.",
     "profile_updated": "Profilo aggiornato",
     "password_updated": "Password aggiornata",
-    "org_updated": "Organizzazione aggiornata"
+    "org_updated": "Organizzazione aggiornata",
+    "email_change_hint": "Per cambiare email serve la password attuale. Dovrai verificare il nuovo indirizzo e le altre sessioni verranno chiuse."
   },
   "vehicle_picker": {
     "title": "Scegli un veicolo",
@@ -698,6 +740,13 @@
     "no_vehicles": {
       "title": "Nessun veicolo",
       "description": "Aggiungi il tuo primo veicolo per iniziare."
+    }
+  },
+  "authGate": {
+    "unreachable": {
+      "title": "Server non raggiungibile",
+      "description": "Non riesco a contattare il server. La tua sessione è ancora valida: controlla la connessione e riprova.",
+      "retry": "Riprova"
     }
   }
 }

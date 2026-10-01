@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/layout';
-import { RefuelingForm, SelectVehiclePrompt } from '@/components/features';
+import { RefuelingForm, SelectVehiclePrompt, VehicleUsableGate } from '@/components/features';
 import { useCreateRefueling } from '@/hooks/useRefuelings';
 import { useVehicle, useVehicleStats } from '@/hooks/useVehicles';
 import { useToast } from '@/hooks/useToast';
@@ -27,22 +27,24 @@ export function RefuelingNewPage() {
         onBack={() => navigate(`/refueling?vehicleId=${vehicleId}`)}
       />
 
-      <RefuelingForm
-        vehicleId={vehicleId}
-        defaultFuelType={vehicleQuery.data?.fuelType}
-        defaultKm={statsQuery.data?.currentKm}
-        isPending={mutation.isPending}
-        error={mutation.error}
-        onCancel={() => navigate(`/refueling?vehicleId=${vehicleId}`)}
-        onSubmit={(data) =>
-          mutation.mutate(data, {
-            onSuccess: (created) => {
-              toast({ title: t('refueling.created'), variant: 'success' });
-              navigate(`/refueling/${created.id}`, { replace: true });
-            },
-          })
-        }
-      />
+      <VehicleUsableGate vehicleId={vehicleId}>
+        <RefuelingForm
+          vehicleId={vehicleId}
+          defaultFuelType={vehicleQuery.data?.fuelType}
+          defaultKm={statsQuery.data?.currentKm}
+          isPending={mutation.isPending}
+          error={mutation.error}
+          onCancel={() => navigate(`/refueling?vehicleId=${vehicleId}`)}
+          onSubmit={(data) =>
+            mutation.mutate(data, {
+              onSuccess: (created) => {
+                toast({ title: t('refueling.created'), variant: 'success' });
+                navigate(`/refueling/${created.id}`, { replace: true });
+              },
+            })
+          }
+        />
+      </VehicleUsableGate>
     </div>
   );
 }

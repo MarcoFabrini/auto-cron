@@ -37,14 +37,22 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
      * self-host (impostazioni globali VAPID — SMTP invece è solo env, vedi
      * AppMailer) — nessun flag/migrazione: id crescente = ordine di creazione,
      * stesso idioma di PushSettingsRepository per le config singleton di
-     * istanza. Se quell'utente si elimina (GDPR), il ruolo passa
-     * automaticamente al successivo più vecchio invece di lasciare l'istanza
-     * senza admin.
+     * istanza. Se quell'utente si elimina (GDPR) la sua riga resta in DB
+     * anonimizzata: va saltata, così il ruolo passa al successivo più vecchio
+     * invece di restare su un account che nessuno può usare.
      */
     public function isInstanceAdmin(User $user): bool
     {
-        $first = $this->findOneBy([], ['id' => 'ASC']);
-        return $first !== null && $first->getId() === $user->getId();
+        $firstId = $this->createQueryBuilder('u')
+            ->select('u.id')
+            ->where('u.email NOT LIKE :anonymized')
+            ->setParameter('anonymized', '%'.User::ANONYMIZED_EMAIL_SUFFIX)
+            ->orderBy('u.id', 'ASC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $firstId !== null && (int) $firstId['id'] === $user->getId();
     }
 
     public function upgradePassword(PasswordAuthenticatedUserInterface $user, string $newHashedPassword): void

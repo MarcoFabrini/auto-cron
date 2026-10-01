@@ -39,3 +39,4 @@ export {
 export { VehicleRefuelingTab, type VehicleRefuelingTabProps } from './VehicleRefuelingTab';
 export { VehicleExpensesTab, type VehicleExpensesTabProps } from './VehicleExpensesTab';
 export { VehicleRemindersTab, type VehicleRemindersTabProps } from './VehicleRemindersTab';
+export { VehicleUsableGate, type VehicleUsableGateProps } from './VehicleUsableGate';

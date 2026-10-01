@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/layout';
-import { MaintenanceForm, SelectVehiclePrompt } from '@/components/features';
+import { MaintenanceForm, SelectVehiclePrompt, VehicleUsableGate } from '@/components/features';
 import { useCreateMaintenance } from '@/hooks/useMaintenances';
 import { useVehicleStats } from '@/hooks/useVehicles';
 import { useToast } from '@/hooks/useToast';
@@ -26,21 +26,23 @@ export function MaintenanceNewPage() {
         onBack={() => navigate(`/maintenance?vehicleId=${vehicleId}`)}
       />
 
-      <MaintenanceForm
-        vehicleId={vehicleId}
-        defaultKm={statsQuery.data?.currentKm}
-        isPending={mutation.isPending}
-        error={mutation.error}
-        onCancel={() => navigate(`/maintenance?vehicleId=${vehicleId}`)}
-        onSubmit={(data) =>
-          mutation.mutate(data, {
-            onSuccess: (created) => {
-              toast({ title: t('maintenance.created'), variant: 'success' });
-              navigate(`/maintenance/${created.id}`, { replace: true });
-            },
-          })
-        }
-      />
+      <VehicleUsableGate vehicleId={vehicleId}>
+        <MaintenanceForm
+          vehicleId={vehicleId}
+          defaultKm={statsQuery.data?.currentKm}
+          isPending={mutation.isPending}
+          error={mutation.error}
+          onCancel={() => navigate(`/maintenance?vehicleId=${vehicleId}`)}
+          onSubmit={(data) =>
+            mutation.mutate(data, {
+              onSuccess: (created) => {
+                toast({ title: t('maintenance.created'), variant: 'success' });
+                navigate(`/maintenance/${created.id}`, { replace: true });
+              },
+            })
+          }
+        />
+      </VehicleUsableGate>
     </div>
   );
 }

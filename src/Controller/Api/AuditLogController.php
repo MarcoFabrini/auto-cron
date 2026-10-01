@@ -50,7 +50,7 @@ final class AuditLogController extends AbstractController
         $this->denyAccessUnlessGranted(OrganizationVoter::MANAGE_MEMBERS, $org);
 
         $limit = min(500, max(1, (int) $request->query->get('limit', '100')));
-        $offset = max(0, (int) $request->query->get('offset', '0'));
+        $offset = min(10_000_000, max(0, (int) $request->query->get('offset', '0')));
 
         $logs = $this->repo->findByOrganization($org, $limit, $offset);
 

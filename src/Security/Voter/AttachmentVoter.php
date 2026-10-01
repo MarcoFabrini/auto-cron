@@ -9,6 +9,8 @@ use App\Entity\User;
 use App\Enum\AttachmentEntityType;
 use App\Repository\ExpenseRepository;
 use App\Repository\MaintenanceRepository;
+use App\Repository\RefuelingRepository;
+use App\Repository\ReminderRepository;
 use App\Repository\VehicleRepository;
 use App\Service\VehicleAccessChecker;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
@@ -16,7 +18,7 @@ use Symfony\Component\Security\Core\Authorization\Voter\Vote;
 use Symfony\Component\Security\Core\Authorization\Voter\Voter;
 
 /**
- * Allegato polimorfico: l'accesso deriva dall'entità a cui è agganciato (Vehicle/Maintenance/Expense).
+ * Allegato polimorfico: l'accesso deriva dall'entità a cui è agganciato (Vehicle/Maintenance/Expense/Refueling/Reminder).
  * Risolviamo il veicolo target e poi deleghiamo a VehicleAccessChecker.
  *
  * @extends Voter<string, Attachment>
@@ -31,6 +33,8 @@ final class AttachmentVoter extends Voter
         private readonly VehicleRepository $vehicleRepo,
         private readonly MaintenanceRepository $maintenanceRepo,
         private readonly ExpenseRepository $expenseRepo,
+        private readonly RefuelingRepository $refuelingRepo,
+        private readonly ReminderRepository $reminderRepo,
     ) {
     }
 
@@ -69,6 +73,8 @@ final class AttachmentVoter extends Voter
             AttachmentEntityType::VEHICLE => $this->vehicleRepo->findOneInOrganization($id, $org),
             AttachmentEntityType::MAINTENANCE => $this->maintenanceRepo->findOneInOrganization($id, $org)?->getVehicle(),
             AttachmentEntityType::EXPENSE => $this->expenseRepo->findOneInOrganization($id, $org)?->getVehicle(),
+            AttachmentEntityType::REFUELING => $this->refuelingRepo->findOneInOrganization($id, $org)?->getVehicle(),
+            AttachmentEntityType::REMINDER => $this->reminderRepo->findOneInOrganization($id, $org)?->getVehicle(),
         };
     }
 }

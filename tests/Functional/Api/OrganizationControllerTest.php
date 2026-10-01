@@ -213,6 +213,30 @@ final class OrganizationControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(409);
     }
 
+    public function testAdminCannotInviteAnOwner(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser(OrgRole::ADMIN);
+
+        $this->jsonRequest('POST', '/api/organizations/'.$org->getId().'/members', [
+            'email' => 'sneaky@test.it',
+            'role' => 'owner',
+        ], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testOwnerCanInviteAnOwner(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('POST', '/api/organizations/'.$org->getId().'/members', [
+            'email' => 'coowner@test.it',
+            'role' => 'owner',
+        ], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
     public function testCannotRemoveOwner(): void
     {
         [$owner, $org, $token] = $this->createAuthenticatedUser();

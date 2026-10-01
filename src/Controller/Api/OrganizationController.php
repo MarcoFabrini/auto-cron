@@ -10,6 +10,8 @@ use App\Entity\Organization;
 use App\Entity\OrganizationInvitation;
 use App\Entity\OrganizationMember;
 use App\Entity\User;
+use App\Entity\Vehicle;
+use App\Entity\VehicleShare;
 use App\Enum\OrgRole;
 use App\Repository\OrganizationInvitationRepository;
 use App\Repository\OrganizationMemberRepository;
@@ -17,6 +19,7 @@ use App\Repository\OrganizationRepository;
 use App\Repository\UserRepository;
 use App\Security\Voter\OrganizationVoter;
 use App\Service\AppMailer;
+use App\Service\AttachmentCleaner;
 use App\Service\MailBuilder;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -50,6 +53,7 @@ final class OrganizationController extends AbstractController
         private readonly AppMailer $mailer,
         private readonly MailBuilder $mailBuilder,
         private readonly LoggerInterface $logger,
+        private readonly AttachmentCleaner $attachmentCleaner,
     ) {
     }
 
@@ -164,8 +168,8 @@ final class OrganizationController extends AbstractController
         $this->denyAccessUnlessGranted(OrganizationVoter::DELETE, $org);
 
         // FK ON DELETE CASCADE rimuoverà membri, veicoli, manutenzioni ecc.
-        $this->em->remove($org);
-        $this->em->flush();
+        // I file degli allegati (non coperti dal cascade) li elimina il cleaner dopo il commit.
+        $this->attachmentCleaner->removeOrganization($org);
         return new JsonResponse(null, 204);
     }
 
@@ -237,6 +241,13 @@ final class OrganizationController extends AbstractController
 
         /** @var User $inviter */
         $inviter = $this->getUser();
+
+        // Solo un OWNER può creare altri OWNER: un ADMIN non può auto-promuoversi via invito.
+        if ($payload->role === OrgRole::OWNER
+            && $this->memberRepo->findMembership($inviter, $org)?->getRole() !== OrgRole::OWNER
+        ) {
+            return $this->problem('member.owner_role_forbidden', 403);
+        }
 
         // Un solo invito pendente per (org, email): invalida i precedenti (re-invito).
         $this->invitationRepo->invalidateForOrgEmail($org, $email);
@@ -323,8 +334,15 @@ final class OrganizationController extends AbstractController
             return $this->problem('member.cannot_remove_owner', 409);
         }
 
-        $this->em->remove($member);
-        $this->em->flush();
+        // Le condivisioni dei veicoli dell'org cadono con la membership: se l'utente venisse
+        // reinvitato in futuro riotterrebbe subito i vecchi accessi (e un proprietario "fantasma").
+        $this->em->wrapInTransaction(function () use ($member, $org): void {
+            $this->em->createQuery(
+                'DELETE FROM '.VehicleShare::class.' s WHERE s.user = :user AND s.vehicle IN (SELECT v.id FROM '.Vehicle::class.' v WHERE v.organization = :org)',
+            )->setParameter('user', $member->getUser())->setParameter('org', $org)->execute();
+            $this->em->remove($member);
+        });
+
         return new JsonResponse(null, 204);
     }
 

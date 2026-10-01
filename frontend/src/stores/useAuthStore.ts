@@ -23,8 +23,10 @@ export interface User {
  * - 'loading': tentativo refresh in corso al mount (mostra splash)
  * - 'authenticated': access token valido + user caricato
  * - 'unauthenticated': no sessione (redirect login)
+ * - 'unreachable': server irraggiungibile al bootstrap (offline / 5xx): la sessione può essere
+ *   ancora valida, quindi niente redirect al login ma una schermata "riprova"
  */
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unreachable';
 
 interface AuthState {
   status: AuthStatus;
@@ -34,6 +36,7 @@ interface AuthState {
   setAccessToken: (token: string) => void;
   setUser: (user: User) => void;
   setUnauthenticated: () => void;
+  setUnreachable: () => void;
   logout: () => void;
 }
 
@@ -69,5 +72,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user });
   },
   setUnauthenticated: () => set({ status: 'unauthenticated', accessToken: null, user: null }),
+  setUnreachable: () => set({ status: 'unreachable' }),
   logout: () => set({ status: 'unauthenticated', accessToken: null, user: null }),
 }));

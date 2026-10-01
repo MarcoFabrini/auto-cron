@@ -69,14 +69,22 @@ Then run `docker compose up -d` again. Using another proxy (nginx, Caddy, Cloudf
 ### Updating
 
 ```bash
+docker compose exec api php bin/console app:backup:create   # backup first
 docker compose pull && docker compose up -d
 ```
 
-DB migrations run automatically on startup.
+DB migrations run automatically on startup, so an update can change the schema: take a backup first. To stay on a known version set `AUTOCRON_TAG` in `.env` (e.g. `v0.2.0`) instead of the default `latest`.
 
 ### Backup
 
-All data (DB, attachments, keys) lives in `./autocron/`: a `tar` or `rsync` of that folder is enough.
+Data (DB, attachments, keys) lives in `./autocron/`, but **don't copy `./autocron/db` while the stack is running**: a live copy of a database directory can be inconsistent. A nightly job writes a DB dump and an uploads archive to `./autocron/backups` (readable only by the app user): copy those, plus your `.env`, to another machine. To copy the whole folder, stop the stack first (`docker compose down`).
+
+### Settings worth knowing
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TRUSTED_PROXIES` | `REMOTE_ADDR` | Trust the direct peer (your reverse proxy) for `X-Forwarded-For`. Safe only while the port stays on `127.0.0.1`/a private network; if you expose it on `0.0.0.0`, set your proxy's IP/CIDR. |
+| `APP_TIMEZONE` | `Europe/Rome` | Calendar timezone for reminder due dates ("today"). |
 
 ### Development and contributing
 
@@ -151,14 +159,22 @@ Poi rilancia `docker compose up -d`. Usi un altro proxy (nginx, Caddy, Cloudflar
 ### Aggiornamento
 
 ```bash
+docker compose exec api php bin/console app:backup:create   # prima un backup
 docker compose pull && docker compose up -d
 ```
 
-Le migrazioni DB girano da sole all'avvio.
+Le migrazioni DB girano da sole all'avvio, quindi un aggiornamento può cambiare lo schema: fai prima un backup. Per restare su una versione precisa imposta `AUTOCRON_TAG` in `.env` (es. `v0.2.0`) invece del default `latest`.
 
 ### Backup
 
-Tutti i dati (DB, allegati, chiavi) sono in `./autocron/`: basta un `tar` o `rsync` di quella cartella.
+I dati (DB, allegati, chiavi) sono in `./autocron/`, ma **non copiare `./autocron/db` a stack acceso**: la copia a caldo di una cartella di database può essere incoerente. Un job notturno scrive un dump del DB e un archivio degli upload in `./autocron/backups` (leggibile solo dall'utente dell'app): copia quelli, più il tuo `.env`, su un'altra macchina. Per copiare l'intera cartella ferma prima lo stack (`docker compose down`).
+
+### Impostazioni da conoscere
+
+| Variabile | Default | Significato |
+|---|---|---|
+| `TRUSTED_PROXIES` | `REMOTE_ADDR` | Si fida del peer diretto (il tuo reverse proxy) per `X-Forwarded-For`. Sicuro solo finché la porta resta su `127.0.0.1`/rete privata; se la esponi su `0.0.0.0` imposta IP/CIDR del proxy. |
+| `APP_TIMEZONE` | `Europe/Rome` | Fuso di calendario per le scadenze dei promemoria ("oggi"). |
 
 ### Sviluppo e contributi
 

@@ -6,10 +6,13 @@ namespace App\Controller\Api;
 
 use App\Dto\Request\RefuelingRequest;
 use App\Entity\Refueling;
+use App\Entity\Vehicle;
+use App\Enum\FuelType;
 use App\Repository\RefuelingRepository;
 use App\Repository\VehicleRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentCleaner;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -33,6 +36,7 @@ final class RefuelingController extends AbstractController
         private readonly RefuelingRepository $repo,
         private readonly VehicleRepository $vehicleRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
+        private readonly AttachmentCleaner $attachmentCleaner,
         private readonly SerializerInterface $serializer,
     ) {
     }
@@ -62,7 +66,7 @@ final class RefuelingController extends AbstractController
         }
         $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
 
-        $page = max(1, (int) $request->query->get('page', 1));
+        $page = min(100_000, max(1, (int) $request->query->get('page', 1)));
         $limit = min(100, max(1, (int) $request->query->get('limit', 20)));
 
         return $this->jsonGroups($this->repo->findByVehiclePaginated($vehicle, $page, $limit), ['refueling:list', 'vehicle:nested']);
@@ -98,6 +102,10 @@ final class RefuelingController extends AbstractController
         }
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
 
+        if (($error = $this->unsupportedFuelType($vehicle, $payload->fuelType)) !== null) {
+            return $error;
+        }
+
         $r = (new Refueling())
             ->setOrganization($vehicle->getOrganization())
             ->setVehicle($vehicle)
@@ -131,6 +139,10 @@ final class RefuelingController extends AbstractController
         $r = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $r);
 
+        if (($error = $this->unsupportedFuelType($r->getVehicle(), $payload->fuelType)) !== null) {
+            return $error;
+        }
+
         $r
             ->setRefueledAt(new \DateTimeImmutable($payload->refueledAt))
             ->setKm($payload->km)
@@ -157,9 +169,26 @@ final class RefuelingController extends AbstractController
     {
         $r = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $r);
-        $this->em->remove($r);
-        $this->em->flush();
+        $this->attachmentCleaner->removeRecord($r);
         return new JsonResponse(null, 204);
+    }
+
+    /**
+     * Un rifornimento con un carburante che il veicolo non usa verrebbe contato nei costi ma non
+     * comparirebbe in nessun consumo (le statistiche iterano solo i carburanti del veicolo).
+     */
+    private function unsupportedFuelType(Vehicle $vehicle, FuelType $fuelType): ?JsonResponse
+    {
+        if (in_array($fuelType, $vehicle->getAllFuelTypes(), true)) {
+            return null;
+        }
+
+        return new JsonResponse([
+            'type' => 'about:blank',
+            'title' => 'validation_failed',
+            'status' => 422,
+            'errors' => [['field' => 'fuelType', 'message' => 'refueling.fuel_type_not_supported']],
+        ], 422);
     }
 
     private function mustFind(int $id): Refueling

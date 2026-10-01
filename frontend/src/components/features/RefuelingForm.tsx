@@ -23,6 +23,7 @@ import type { Refueling } from '@/api/types/refueling';
 import { refuelingSchema, type RefuelingFormData } from '@/schemas/refueling.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
+import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
 import { formatCurrency, todayIso } from '@/lib/format';
 import { parseDecimal } from '@/lib/decimal';
 
@@ -53,22 +54,25 @@ export function RefuelingForm({
 }: RefuelingFormProps) {
   const { t } = useTranslation();
 
+  const initialValues: RefuelingFormData = {
+    vehicleId,
+    refueledAt: defaultValues?.refueledAt ?? todayIso(),
+    km: defaultValues?.km ?? defaultKm ?? 0,
+    liters: defaultValues?.liters ?? '',
+    pricePerLiter: defaultValues?.pricePerLiter ?? '',
+    fuelType: defaultValues?.fuelType ?? defaultFuelType,
+    fullTank: defaultValues?.fullTank ?? true,
+    station: defaultValues?.station ?? null,
+    notes: defaultValues?.notes ?? null,
+  };
+
   const form = useForm<RefuelingFormData>({
     resolver: zodResolver(refuelingSchema),
-    defaultValues: {
-      vehicleId,
-      refueledAt: defaultValues?.refueledAt ?? todayIso(),
-      km: defaultValues?.km ?? defaultKm ?? 0,
-      liters: defaultValues?.liters ?? '',
-      pricePerLiter: defaultValues?.pricePerLiter ?? '',
-      fuelType: defaultValues?.fuelType ?? defaultFuelType,
-      fullTank: defaultValues?.fullTank ?? true,
-      station: defaultValues?.station ?? null,
-      notes: defaultValues?.notes ?? null,
-    },
+    defaultValues: initialValues,
   });
+  useResyncPristineForm(form, defaultValues, initialValues);
 
-  useServerFieldErrors(form, error);
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   // dirtyFields è dietro un Proxy: va letto in fase di render per attivare
   // la subscription, altrimenti nell'effect sotto risulta sempre stale.
@@ -217,7 +221,7 @@ export function RefuelingForm({
         )}
       </FormField>
 
-      {error instanceof ApiError && error.title !== 'validation_failed' && (
+      {error instanceof ApiError && (error.title !== 'validation_failed' || hasUnmapped) && (
         <Alert variant="error">
           {t(`errors.${error.title}`, { defaultValue: error.detail ?? error.title })}
         </Alert>

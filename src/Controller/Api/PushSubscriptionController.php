@@ -89,6 +89,32 @@ final class PushSubscriptionController extends AbstractController
         return $this->jsonGroups($sub, ['push:read'], 201);
     }
 
+    /**
+     * Il browser conosce solo l'endpoint della propria subscription (non l'id): la rimozione
+     * dal device passa da qui, così la riga non resta orfana sul server.
+     */
+    #[OA\Post(
+        summary: 'Unregister the current device subscription by endpoint',
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: PushSubscriptionRequest::class))),
+        responses: [new OA\Response(response: 204, description: 'Removed (idempotent)')],
+    )]
+    #[Route('/unsubscribe', name: 'unsubscribe', methods: ['POST'])]
+    public function unsubscribe(#[MapRequestPayload] PushSubscriptionRequest $payload): JsonResponse
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+
+        if ($payload->endpoint) {
+            $existing = $this->repo->findByWebEndpoint($user, $payload->endpoint);
+            if ($existing !== null) {
+                $this->em->remove($existing);
+                $this->em->flush();
+            }
+        }
+
+        return new JsonResponse(null, 204);
+    }
+
     #[OA\Delete(
         summary: 'Unregister push subscription (user-scoped)',
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],

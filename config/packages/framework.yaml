@@ -37,9 +37,27 @@ framework:
             policy: 'fixed_window'
             limit: 30
             interval: '1 minute'
+        # Solo IP: il limiter di login è per (email, IP) e non frena né lo spraying di una password
+        # su molte email né chi ruota le email.
+        login_ip:
+            policy: 'fixed_window'
+            limit: 20
+            interval: '1 minute'
+        # register / reset-password / verify-email / inviti: i token sono a 256 bit (non indovinabili),
+        # ma ogni tentativo costa hashing/DB. Per IP.
+        token_actions:
+            policy: 'fixed_window'
+            limit: 30
+            interval: '15 minutes'
 
 when@test:
     framework:
         test: true
+        # I test girano tutti dallo stesso IP e ripetono le stesse azioni: limiti irraggiungibili.
+        rate_limiter:
+            login_ip:
+                limit: 100000
+            token_actions:
+                limit: 100000
         session:
             storage_factory_id: session.storage.factory.mock_file

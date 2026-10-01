@@ -78,7 +78,8 @@
       "error_title": "Invalid invitation",
       "invalid_title": "Invalid link",
       "invalid_description": "The invitation link is missing or invalid.",
-      "continue": "Go to dashboard"
+      "continue": "Go to dashboard",
+      "switch_account": "Sign out and continue"
     }
   },
   "actions": {
@@ -103,7 +104,10 @@
     "vehicle_count_one": "{{count}} vehicle",
     "vehicle_count_other": "{{count}} vehicles",
     "upcoming_reminders": "Upcoming reminders",
-    "upcoming_reminders_empty": "No reminders due in the next 30 days."
+    "upcoming_reminders_empty": "No due dates on your vehicles in the next 30 days.",
+    "partial_totals": "Some vehicles failed to load: totals are partial.",
+    "owned_only_hint_one": "Totals and due dates only cover your own vehicles: {{count}} vehicle you can see but don't own is left out.",
+    "owned_only_hint_other": "Totals and due dates only cover your own vehicles: {{count}} vehicles you can see but don't own are left out."
   },
   "quick_add": {
     "open": "Add",
@@ -470,7 +474,13 @@
       "expenses": "Expenses",
       "consumption": "Average consumption",
       "consumption_unknown": "Needs at least 2 full tanks"
-    }
+    },
+    "archived_no_new_records": "This vehicle is archived: new records can't be added. Restore it to continue.",
+    "archived_banner": "This vehicle is archived.",
+    "restore": "Restore",
+    "restored": "Vehicle restored",
+    "shared_read_only": "Shared · read-only",
+    "read_only_no_changes": "This vehicle is shared with you read-only: you can see its data but not change it."
   },
   "error_page": {
     "back_home": "Back to home",
@@ -503,16 +513,24 @@
   "errors": {
     "common": {
       "invalid_date": "Invalid date",
-      "invalid_decimal": "Invalid number (e.g. 12.50)"
-    },
-    "mail": {
-      "not_configured": "SMTP not configured or disabled: save the configuration first",
-      "send_failed": "Send failed: check host, port and credentials"
+      "invalid_decimal": "Invalid number (e.g. 12.50)",
+      "decimal_too_large": "Number too large",
+      "must_be_positive": "Must be greater than zero",
+      "km_too_large": "Invalid mileage (max 9,999,999)",
+      "required": "Required",
+      "invalid_number": "Invalid number",
+      "must_be_integer": "Enter a whole number",
+      "invalid_value": "Invalid value",
+      "too_short": "Too short",
+      "too_long": "Too long",
+      "too_small": "Value too low",
+      "too_big": "Value too high"
     },
     "push": {
       "not_configured": "Push notifications not configured: generate the VAPID keys first and enable them",
       "no_subscription": "No subscribed device: enable notifications on this browser first",
-      "no_keys": "Generate a VAPID keypair before enabling notifications"
+      "no_keys": "Generate a VAPID keypair before enabling notifications",
+      "endpoint_not_allowed": "Unsupported push service"
     },
     "settings": {
       "instance_admin_required": "Only the instance administrator (the first registered user) can change these settings"
@@ -524,7 +542,8 @@
       "email_taken": "Email already registered",
       "invalid_current_password": "Your current password is incorrect",
       "invalid_reset_token": "The reset link is expired or invalid",
-      "registration_closed": "Open registration is closed on this instance: ask the administrator for an invite"
+      "registration_closed": "Open registration is closed on this instance: ask the administrator for an invite",
+      "try_again": "The server is busy, try again in a moment."
     },
     "access": {
       "org_admin_required": "Only organization admins can perform this action."
@@ -539,7 +558,8 @@
       "fuel_type": {
         "required": "Select fuel"
       },
-      "not_found": "Refueling not found"
+      "not_found": "Refueling not found",
+      "fuel_type_not_supported": "This vehicle doesn't use the selected fuel"
     },
     "expense": {
       "vehicle": {
@@ -554,7 +574,9 @@
       "recurring_period": {
         "required": "Select frequency"
       },
-      "not_found": "Expense not found"
+      "not_found": "Expense not found",
+      "recurring_period_required": "Choose how often the recurring expense repeats",
+      "recurring_period_unexpected": "Frequency only applies to recurring expenses"
     },
     "maintenance": {
       "vehicle": {
@@ -623,7 +645,7 @@
       "404": "Not found",
       "500": "Server error"
     },
-    "validation_failed": "Check the entered data",
+    "validation_failed": "Check the data you entered: the server didn't accept it.",
     "unknown": "Unexpected error",
     "account": {
       "first_name": {
@@ -654,6 +676,37 @@
       "not_org_member": "Invalid selection: you can only share with organization members.",
       "cannot_remove_owner": "The vehicle owner can't be removed.",
       "not_found": "Share not found."
+    },
+    "reminder": {
+      "description": {
+        "required": "Enter a description"
+      },
+      "due_required": "Set at least one due point (date or km)",
+      "not_found": "Reminder not found",
+      "notify_days": {
+        "required": "Enter the number of days"
+      },
+      "type": {
+        "required": "Select a type"
+      },
+      "vehicle": {
+        "required": "Vehicle required"
+      }
+    },
+    "network": {
+      "unavailable": "Server unreachable"
+    },
+    "member": {
+      "owner_role_forbidden": "Only an owner can assign the owner role"
+    },
+    "validation": {
+      "decimal_format": "Invalid number (e.g. 12.50)",
+      "amount_format": "Invalid amount (max 8 integer digits and 2 decimals)",
+      "liters_format": "Invalid liters (max 5 integer digits and 3 decimals)",
+      "price_format": "Invalid price (max 2 integer digits and 4 decimals)"
+    },
+    "org": {
+      "slug_format": "This name can't be used for the organization address"
     }
   },
   "account": {
@@ -678,7 +731,8 @@
     "edit_organization_description": "Rename your organization.",
     "profile_updated": "Profile updated",
     "password_updated": "Password updated",
-    "org_updated": "Organization updated"
+    "org_updated": "Organization updated",
+    "email_change_hint": "Changing your email requires your current password. You'll need to verify the new address and other sessions will be signed out."
   },
   "vehicle_picker": {
     "title": "Choose a vehicle",
@@ -686,6 +740,13 @@
     "no_vehicles": {
       "title": "No vehicles",
       "description": "Add your first vehicle to get started."
+    }
+  },
+  "authGate": {
+    "unreachable": {
+      "title": "Server unreachable",
+      "description": "Can't reach the server. Your session is still valid: check your connection and try again.",
+      "retry": "Retry"
     }
   }
 }

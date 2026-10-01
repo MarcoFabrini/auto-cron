@@ -57,3 +57,49 @@ describe('schemi con importi decimali: la virgola della tastiera italiana è acc
     expect(maintenanceSchema.safeParse(base).success).toBe(true);
   });
 });
+
+describe('limiti allineati al backend (DecimalString)', () => {
+  const refuelingBase = { ...refueling, pricePerLiter: '1,8' };
+
+  it('litri e prezzo: zero e valori più grandi della colonna sono rifiutati sul campo', () => {
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '0' }).success).toBe(false);
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '100000' }).success).toBe(false); // 6 cifre intere
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '99999,999' }).success).toBe(true);
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '40', pricePerLiter: '100' }).success).toBe(false);
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '40', pricePerLiter: '1,8595' }).success).toBe(true);
+  });
+
+  it('spesa: importo a zero rifiutato, manutenzione gratuita (costo 0) ammessa', () => {
+    const expense = { vehicleId: 1, occurredAt: '2026-09-25', category: 'other', description: 'x', recurring: false };
+    expect(expenseSchema.safeParse({ ...expense, amount: '0' }).success).toBe(false);
+    expect(expenseSchema.safeParse({ ...expense, amount: '123456789' }).success).toBe(false); // 9 cifre intere
+
+    const maintenance = {
+      vehicleId: 1,
+      performedAt: '2026-09-25',
+      km: 10,
+      type: 'oil_change',
+      category: 'scheduled',
+      description: 'Tagliando',
+    };
+    expect(maintenanceSchema.safeParse({ ...maintenance, cost: '0' }).success).toBe(true);
+  });
+
+  it('spesa non ricorrente: il periodo scelto e poi lasciato non viene inviato', () => {
+    const r = expenseSchema.safeParse({
+      vehicleId: 1,
+      occurredAt: '2026-09-25',
+      category: 'other',
+      description: 'x',
+      amount: '10',
+      recurring: false,
+      recurringPeriod: 'yearly',
+    });
+    expect(r.success && r.data.recurringPeriod).toBeNull();
+  });
+
+  it('chilometri oltre il massimo del backend rifiutati', () => {
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '40', km: 10_000_000 }).success).toBe(false);
+    expect(refuelingSchema.safeParse({ ...refuelingBase, liters: '40', km: 9_999_999 }).success).toBe(true);
+  });
+});

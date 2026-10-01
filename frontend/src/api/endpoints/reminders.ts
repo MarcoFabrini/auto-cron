@@ -12,7 +12,7 @@ export async function listReminders(vehicleId: number): Promise<Reminder[]> {
   return raw.map(adaptReminder);
 }
 
-/** Scadenze a data in arrivo su tutti i veicoli dell'organizzazione (per la dashboard). */
+/** Scadenze a data in arrivo sui veicoli propri dell'utente (per la dashboard). */
 export async function listUpcomingReminders(days = 30, limit = 5): Promise<Reminder[]> {
   const raw = await authFetch<ReminderResponse[]>(
     `/api/reminders/upcoming?days=${days}&limit=${limit}`,

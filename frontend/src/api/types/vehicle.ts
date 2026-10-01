@@ -46,9 +46,18 @@ export interface Vehicle {
   /** Assente nel group vehicle:list (undefined); presente in vehicle:read. */
   archivedAt?: string | null;
   photoPath?: string | null;
-  /** Solo nel dettaglio (GET /api/vehicles/{id}): permessi dell'utente corrente. */
-  permissions?: VehiclePermissions;
+  /** Rapporto dell'utente corrente con il veicolo (lista e dettaglio). */
+  ownership: VehicleOwnership;
+  /** Permessi dell'utente corrente su questo veicolo (il backend applica comunque i voter). */
+  permissions: VehiclePermissions;
 }
+
+/**
+ * - `owned`: è suo (l'ha creato). Solo questi entrano in totali, grafici, scadenze e notifiche.
+ * - `shared`: condiviso con lui in sola lettura: lo vede ma non modifica nulla.
+ * - `organization`: lo vede (e lo gestisce) come owner/admin dell'org, ma non è suo.
+ */
+export type VehicleOwnership = 'owned' | 'shared' | 'organization';
 
 export interface VehiclePermissions {
   canEdit: boolean;

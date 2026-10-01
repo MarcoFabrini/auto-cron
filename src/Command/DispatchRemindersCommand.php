@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Reminder;
 use App\Message\SendReminderNotificationMessage;
 use App\Repository\ReminderRepository;
+use App\Service\AppClock;
 use App\Service\VehicleStatsService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -24,8 +25,8 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * Pensato per un cron giornaliero (`0 7 * * *  php bin/console app:reminders:dispatch`).
  *
  * Idempotenza: una notifica per livello, non una al giorno. Il livello notificato sta sul
- * promemoria (`notifiedUrgency`) ed è scritto dall'handler dopo l'invio; rieseguire il job
- * prima che l'handler giri accoda messaggi doppi, ma l'handler ricontrolla e scarta i doppioni.
+ * promemoria (`notifiedUrgency`) ed è preso dall'handler con un claim atomico prima dell'invio; rieseguire
+ * il job prima che l'handler giri accoda messaggi doppi, ma l'handler ne scarta i doppioni.
  */
 #[AsCommand(name: 'app:reminders:dispatch', description: 'Dispatch reminder notifications (date and km based)')]
 final class DispatchRemindersCommand extends Command
@@ -34,6 +35,7 @@ final class DispatchRemindersCommand extends Command
         private readonly ReminderRepository $reminderRepo,
         private readonly VehicleStatsService $vehicleStats,
         private readonly MessageBusInterface $bus,
+        private readonly AppClock $clock,
     ) {
         parent::__construct();
     }
@@ -47,7 +49,7 @@ final class DispatchRemindersCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $dryRun = (bool) $input->getOption('dry-run');
-        $today = new \DateTimeImmutable('today');
+        $today = $this->clock->today();
 
         /** @var array<int, int> $kmByVehicle km attuali per veicolo: un solo calcolo anche con più promemoria */
         $kmByVehicle = [];

@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { authFetch } from '@/api/client';
+import { unsubscribeThisDevice } from '@/lib/pushCleanup';
 import { useAuthStore } from '@/stores/useAuthStore';
 
 /**
@@ -12,6 +13,7 @@ export function useLogout() {
   const qc = useQueryClient();
 
   return async () => {
+    await unsubscribeThisDevice();
     try {
       await authFetch<void>('/api/auth/logout', { method: 'POST' });
     } catch {

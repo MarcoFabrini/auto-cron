@@ -20,24 +20,38 @@ final class RefreshTokenService
     ) {
     }
 
-    public function issue(User $user): RefreshToken
+    public function issue(User $user, ?int $activeOrganizationId = null): RefreshToken
     {
-        $token = bin2hex(random_bytes(48)); // 96 chars
+        $token = bin2hex(random_bytes(48)); // 96 chars, consegnato al client e mai salvato
         $expiresAt = (new \DateTimeImmutable())->modify('+'.self::TTL_DAYS.' days');
 
-        $refreshToken = new RefreshToken($user, $token, $expiresAt);
+        // In DB solo l'hash: un dump o un backup non permettono di rubare le sessioni attive.
+        $refreshToken = new RefreshToken($user, self::hash($token), $expiresAt);
+        $refreshToken->setPlainToken($token);
+        $refreshToken->setActiveOrganizationId($activeOrganizationId);
         $this->em->persist($refreshToken);
         $this->em->flush();
 
         return $refreshToken;
     }
 
-    public function rotate(RefreshToken $oldToken): RefreshToken
+    /**
+     * Ruota il token mantenendo l'org attiva. Null se un'altra richiesta l'ha già ruotato
+     * (due refresh concorrenti con lo stesso token non ottengono due sessioni).
+     */
+    public function rotate(RefreshToken $oldToken): ?RefreshToken
     {
-        $oldToken->revoke();
-        $newToken = $this->issue($oldToken->getUser());
+        if (!$this->repo->revokeIfActive($oldToken)) {
+            return null;
+        }
+
+        return $this->issue($oldToken->getUser(), $oldToken->getActiveOrganizationId());
+    }
+
+    public function setActiveOrganization(RefreshToken $token, int $organizationId): void
+    {
+        $token->setActiveOrganizationId($organizationId);
         $this->em->flush();
-        return $newToken;
     }
 
     public function revoke(RefreshToken $token): void
@@ -53,6 +67,12 @@ final class RefreshTokenService
 
     public function findValid(string $token): ?RefreshToken
     {
-        return $this->repo->findValidByToken($token);
+        return $this->repo->findValidByToken(self::hash($token));
+    }
+
+    /** Il token ha 384 bit di entropia: sha256 senza sale basta (non è una password). */
+    public static function hash(string $token): string
+    {
+        return hash('sha256', $token);
     }
 }

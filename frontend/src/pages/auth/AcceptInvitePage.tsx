@@ -7,6 +7,7 @@ import { Alert, Button, FormField, Heading, Input, Spinner, Text } from '@/compo
 import { AuthLayout } from '@/components/layout';
 import { AuthBrand } from '@/components/features';
 import { useAuthStore } from '@/stores/useAuthStore';
+import { useLogout } from '@/hooks/useLogout';
 import {
   useAcceptInvitation,
   useInvitationPreview,
@@ -29,6 +30,7 @@ import {
 export function AcceptInvitePage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const logout = useLogout();
   const { toast } = useToast();
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
@@ -41,6 +43,12 @@ export function AcceptInvitePage() {
   const accept = useAcceptInvitation();
   const register = useRegisterInvited();
   const accepted = useRef(false);
+
+  async function signOutAndContinue() {
+    await logout();
+    // Da non autenticati lo stesso link propone registrazione/accesso con l'email dell'invito.
+    navigate(`/accept-invite?token=${encodeURIComponent(token)}`, { replace: true });
+  }
 
   const data = preview.data;
   const sameEmail =
@@ -111,7 +119,11 @@ export function AcceptInvitePage() {
       <Centered>
         <Heading level={2}>{t('auth.invite.title')}</Heading>
         <Text variant="muted">{t('auth.invite.email_mismatch', { email: data.email })}</Text>
-        <Button asChild variant="outline" className="mt-2">
+        {/* L'invito è per un'altra email: si esce e si riapre lo stesso link per accettare/registrarsi. */}
+        <Button className="mt-2" onClick={() => void signOutAndContinue()}>
+          {t('auth.invite.switch_account')}
+        </Button>
+        <Button asChild variant="outline">
           <Link to="/settings">{t('auth.invite.continue')}</Link>
         </Button>
       </Centered>

@@ -15,3 +15,10 @@ node_modules/
 .DS_Store
 .lando-data/
 autocron/
+tests/
+scripts/
+.github/
+.forgejo/
+.phpunit.cache/
+*.md
+!README.md

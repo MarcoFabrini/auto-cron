@@ -16,6 +16,7 @@ import {
 import { PageHeader } from '@/components/layout';
 import { AttachmentsSection, ConfirmDialog } from '@/components/features';
 import { useDeleteMaintenance, useMaintenance } from '@/hooks/useMaintenances';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 import { formatCurrency, formatDate, formatKm } from '@/lib/format';
@@ -29,6 +30,8 @@ export function MaintenanceDetailPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useMaintenance(maintenanceId);
+  // Veicolo condiviso in sola lettura: niente modifica, eliminazione, allegati.
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
   const deleteMutation = useDeleteMaintenance(data?.vehicleId ?? 0);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -51,21 +54,23 @@ export function MaintenanceDetailPage() {
         description={data.description}
         onBack={() => navigate(`/maintenance?vehicleId=${data.vehicleId}`)}
         action={
-          <>
-            <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
-              <Link to={`/maintenance/${data.id}/edit`}>
-                <Pencil />
-              </Link>
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => setConfirmOpen(true)}
-              aria-label={t('actions.delete')}
-            >
-              <Trash2 />
-            </Button>
-          </>
+          canEdit ? (
+            <>
+              <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
+                <Link to={`/maintenance/${data.id}/edit`}>
+                  <Pencil />
+                </Link>
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => setConfirmOpen(true)}
+                aria-label={t('actions.delete')}
+              >
+                <Trash2 />
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -108,7 +113,7 @@ export function MaintenanceDetailPage() {
           <CardDescription>{t('attachment.description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <AttachmentsSection entityType="maintenance" entityId={data.id} />
+          <AttachmentsSection entityType="maintenance" entityId={data.id} readOnly={!canEdit} />
         </CardContent>
       </Card>
 

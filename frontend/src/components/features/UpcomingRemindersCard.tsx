@@ -6,9 +6,10 @@ import { useUpcomingReminders } from '@/hooks/useReminders';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 
 /**
- * Card dashboard con le prossime scadenze (a data) su tutti i veicoli dell'organizzazione.
+ * Card dashboard con le prossime scadenze (a data) dei veicoli propri dell'utente: non quelli
+ * condivisi con lui né, per owner/admin dell'org, quelli degli altri membri.
  * Le scadenze a km sono escluse: richiederebbero il chilometraggio attuale di ogni veicolo,
- * vedi il commento su `ReminderRepository::findUpcomingForOrganization`.
+ * vedi il commento su `ReminderRepository::findUpcomingForOwner`.
  */
 export function UpcomingRemindersCard() {
   const { t } = useTranslation();

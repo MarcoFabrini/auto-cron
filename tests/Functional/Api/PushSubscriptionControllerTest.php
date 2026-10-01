@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use App\Tests\Support\ApiTestCase;
 
 final class PushSubscriptionControllerTest extends ApiTestCase
@@ -15,10 +16,37 @@ final class PushSubscriptionControllerTest extends ApiTestCase
         // Missing p256dh + authSecret
         $this->jsonRequest('POST', '/api/push-subscriptions', [
             'platform' => 'web',
-            'endpoint' => 'https://example.com/push/123',
+            'endpoint' => 'https://fcm.googleapis.com/fcm/send/123',
         ], accessToken: $token);
 
         self::assertResponseStatusCodeSame(400);
+    }
+
+    #[DataProvider('disallowedEndpoints')]
+    public function testRejectsEndpointsOutsideKnownPushServices(string $endpoint): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('POST', '/api/push-subscriptions', [
+            'platform' => 'web',
+            'endpoint' => $endpoint,
+            'p256dh' => 'p256dh-key',
+            'authSecret' => 'auth-secret',
+        ], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function disallowedEndpoints(): iterable
+    {
+        yield 'metadata service' => ['http://169.254.169.254/latest/meta-data'];
+        yield 'internal host' => ['https://redis:6379/'];
+        yield 'plain http on allowed host' => ['http://fcm.googleapis.com/fcm/send/1'];
+        yield 'lookalike suffix' => ['https://evilgoogleapis.com/x'];
+        yield 'userinfo trick' => ['https://fcm.googleapis.com@evil.test/x'];
     }
 
     public function testCreateWebSubscriptionSucceeds(): void
@@ -27,7 +55,7 @@ final class PushSubscriptionControllerTest extends ApiTestCase
 
         $this->jsonRequest('POST', '/api/push-subscriptions', [
             'platform' => 'web',
-            'endpoint' => 'https://example.com/push/123',
+            'endpoint' => 'https://fcm.googleapis.com/fcm/send/123',
             'p256dh' => 'p256dh-key',
             'authSecret' => 'auth-secret',
             'deviceLabel' => 'Chrome on MacBook',
@@ -43,7 +71,7 @@ final class PushSubscriptionControllerTest extends ApiTestCase
 
         $payload = [
             'platform' => 'web',
-            'endpoint' => 'https://example.com/push/repeat',
+            'endpoint' => 'https://fcm.googleapis.com/fcm/send/repeat',
             'p256dh' => 'p256dh',
             'authSecret' => 'auth',
         ];
@@ -62,7 +90,7 @@ final class PushSubscriptionControllerTest extends ApiTestCase
 
         $this->jsonRequest('POST', '/api/push-subscriptions', [
             'platform' => 'web',
-            'endpoint' => 'https://example.com/push/user-a',
+            'endpoint' => 'https://fcm.googleapis.com/fcm/send/user-a',
             'p256dh' => 'p256dh',
             'authSecret' => 'auth',
         ], accessToken: $tokenA);

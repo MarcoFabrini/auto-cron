@@ -79,22 +79,10 @@ parameters:
 			path: src/Entity/User.php
 
 		-
-			message: '#^Match expression does not handle remaining values\: App\\Enum\\AttachmentEntityType\:\:REFUELING\|App\\Enum\\AttachmentEntityType\:\:REMINDER$#'
-			identifier: match.unhandled
-			count: 1
-			path: src/Security/Voter/AttachmentVoter.php
-
-		-
 			message: '#^Expression on left side of \?\? is not nullable\.$#'
 			identifier: nullCoalesce.expr
 			count: 1
 			path: src/Service/ActiveOrganizationResolver.php
-
-		-
-			message: '#^Parameter \#1 \$rows of method App\\Service\\VehicleStatsService\:\:avgKmPerLiterFillToFill\(\) expects list\<array\{km\: int\|string, liters\: string, full_tank\: bool\|int\|string, refueled_at\: string, id\: int\|string\}\>, list\<array\<string, mixed\>\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Service/VehicleStatsService.php
 
 		-
 			message: '#^Parameter \#1 \$cookies of method App\\Tests\\Functional\\Api\\AuthControllerTest\:\:findCookie\(\) expects list\<Symfony\\Component\\HttpFoundation\\Cookie\>, array\<int, Symfony\\Component\\HttpFoundation\\Cookie\> given\.$#'

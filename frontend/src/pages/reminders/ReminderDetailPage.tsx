@@ -18,6 +18,7 @@ import {
   useDeleteReminder,
   useReminder,
 } from '@/hooks/useReminders';
+import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
 import { formatDate, formatKm } from '@/lib/format';
@@ -31,8 +32,10 @@ export function ReminderDetailPage() {
   const errorMessage = useApiErrorMessage();
 
   const { data, isLoading, error } = useReminder(reminderId);
-  const completeMutation = useCompleteReminder(data?.vehicleId ?? 0);
-  const deleteMutation = useDeleteReminder(data?.vehicleId ?? 0);
+  // Veicolo condiviso in sola lettura: niente modifica, eliminazione, allegati.
+  const canEdit = useCanEditVehicle(data?.vehicleId ?? 0);
+  const completeMutation = useCompleteReminder();
+  const deleteMutation = useDeleteReminder();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (isLoading) {
@@ -55,21 +58,23 @@ export function ReminderDetailPage() {
         description={data.description}
         onBack={() => navigate(`/reminders?vehicleId=${data.vehicleId}`)}
         action={
-          <>
-            <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
-              <Link to={`/reminders/${data.id}/edit`}>
-                <Pencil />
-              </Link>
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={() => setConfirmOpen(true)}
-              aria-label={t('actions.delete')}
-            >
-              <Trash2 />
-            </Button>
-          </>
+          canEdit ? (
+            <>
+              <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
+                <Link to={`/reminders/${data.id}/edit`}>
+                  <Pencil />
+                </Link>
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={() => setConfirmOpen(true)}
+                aria-label={t('actions.delete')}
+              >
+                <Trash2 />
+              </Button>
+            </>
+          ) : undefined
         }
       />
 
@@ -88,7 +93,7 @@ export function ReminderDetailPage() {
                 <dd className="font-medium">{formatDate(data.dueDate)}</dd>
               </div>
             )}
-            {data.dueKm && (
+            {data.dueKm != null && (
               <div>
                 <dt className="text-muted-foreground">{t('reminder.due_km')}</dt>
                 <dd className="font-medium">{formatKm(data.dueKm)}</dd>
@@ -106,7 +111,7 @@ export function ReminderDetailPage() {
             )}
           </dl>
 
-          {!isDone && (
+          {!isDone && canEdit && (
             <Button
               variant="primary"
               fullWidth

@@ -18,7 +18,7 @@ final class ShareRoleTest extends TestCase
     {
         // [role,           canEdit, canDelete]
         yield 'admin can edit and delete' => [ShareRole::ADMIN, true, true];
-        yield 'editor can edit but not delete' => [ShareRole::EDITOR, true, false];
+        yield 'legacy editor is read-only like viewer' => [ShareRole::EDITOR, false, false];
         yield 'viewer can neither' => [ShareRole::VIEWER, false, false];
     }
 

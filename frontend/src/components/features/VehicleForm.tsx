@@ -18,6 +18,7 @@ import { FUEL_TYPES, VEHICLE_TYPES, type FuelType, type Vehicle } from '@/api/ty
 import { vehicleSchema, type VehicleFormData } from '@/schemas/vehicle.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
+import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
 
 /**
  * VehicleForm feature — form create/edit veicolo riusato in NewPage e EditPage.
@@ -68,16 +69,18 @@ export function VehicleForm({
 }: VehicleFormProps) {
   const { t } = useTranslation();
 
+  const initialValues = { ...EMPTY_DEFAULTS, ...defaultValues } as VehicleFormData;
   const form = useForm<VehicleFormData>({
     resolver: zodResolver(vehicleSchema),
-    defaultValues: { ...EMPTY_DEFAULTS, ...defaultValues } as VehicleFormData,
+    defaultValues: initialValues,
   });
+  useResyncPristineForm(form, defaultValues, initialValues);
 
   function handleSubmit(data: VehicleFormData) {
     onSubmit(data);
   }
 
-  useServerFieldErrors(form, error);
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   const errors = form.formState.errors;
   const tErr = (key: string | undefined) => (key ? t(`errors.${key}`, { defaultValue: key }) : undefined);
@@ -231,7 +234,7 @@ export function VehicleForm({
         )}
       </FormField>
 
-      {error instanceof ApiError && error.title !== 'validation_failed' && (
+      {error instanceof ApiError && (error.title !== 'validation_failed' || hasUnmapped) && (
         <Alert variant="error">
           {t(`errors.${error.title}`, { defaultValue: error.detail ?? error.title })}
         </Alert>

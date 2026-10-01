@@ -9,7 +9,8 @@ framework:
                 dsn: 'doctrine://default'
                 retry_strategy:
                     max_retries: 3
-                    multiplier: 2
+                    delay: 60000
+                    multiplier: 5
                 options:
                     queue_name: async
 

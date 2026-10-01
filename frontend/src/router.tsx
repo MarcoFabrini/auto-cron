@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { safeNextPath } from '@/lib/safeNext';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
@@ -45,14 +46,25 @@ import {
 /** Route guard: richiede sessione autenticata, altrimenti redirect login. */
 function RequireAuth() {
   const status = useAuthStore((s) => s.status);
-  if (status !== 'authenticated') return <Navigate to="/login" replace />;
+  const location = useLocation();
+  const { id } = useParams();
+  if (status !== 'authenticated') {
+    // Ricorda dove voleva andare (deep link, sessione scaduta): il login riporta lì.
+    const here = location.pathname + location.search;
+    const to = here === '/' ? '/login' : `/login?next=${encodeURIComponent(here)}`;
+    return <Navigate to={to} replace />;
+  }
+  // `/expenses/abc` o `/vehicles/0/edit`: la query resterebbe disabilitata e la pagina bianca.
+  if (id !== undefined && !/^[1-9]\d*$/.test(id)) return <NotFoundPage />;
   return <Outlet />;
 }
 
 /** Route guard inverso: se già autenticato, redirect home (login/register). */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const status = useAuthStore((s) => s.status);
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  const [params] = useSearchParams();
+  // Appena autenticato, il login può essere in corso con un `next`: rispettarlo invece di andare sempre a "/".
+  if (status === 'authenticated') return <Navigate to={safeNextPath(params.get('next'))} replace />;
   return <>{children}</>;
 }
 

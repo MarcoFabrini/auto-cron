@@ -59,7 +59,8 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
     navigate(to);
   }
 
-  const list = vehicles ?? [];
+  // Solo i veicoli a cui si possono aggiungere dati: quelli condivisi in sola lettura no.
+  const list = (vehicles ?? []).filter((v) => v.permissions.canEdit);
   const onlyVehicle = list.length === 1 ? (list[0] ?? null) : null;
   const vehicle = selected ?? onlyVehicle;
   const currentStep = step ?? (onlyVehicle ? 'entity' : 'vehicle');

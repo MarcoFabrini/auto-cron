@@ -228,6 +228,19 @@ final class GdprExportService
     }
 
     /**
+     * Metadati degli allegati agganciati a un'entità (manutenzione, rifornimento, spesa, promemoria).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function attachmentsFor(AttachmentEntityType $type, ?int $entityId, Organization $org): array
+    {
+        return array_map(
+            fn ($x) => $this->serializeAttachment($x),
+            $this->attachmentRepo->findByEntity($type, (string) $entityId, $org),
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function serializeMaintenance(Maintenance $m): array
@@ -241,6 +254,7 @@ final class GdprExportService
             'cost' => $m->getCost(),
             'workshop' => $m->getWorkshop(),
             'description' => $m->getDescription(),
+            'attachments' => $this->attachmentsFor(AttachmentEntityType::MAINTENANCE, $m->getId(), $m->getOrganization()),
         ];
     }
 
@@ -260,6 +274,7 @@ final class GdprExportService
             'full_tank' => $r->isFullTank(),
             'station' => $r->getStation(),
             'notes' => $r->getNotes(),
+            'attachments' => $this->attachmentsFor(AttachmentEntityType::REFUELING, $r->getId(), $r->getOrganization()),
         ];
     }
 
@@ -274,6 +289,7 @@ final class GdprExportService
             'occurred_at' => $e->getOccurredAt()->format('Y-m-d'),
             'amount' => $e->getAmount(),
             'description' => $e->getDescription(),
+            'attachments' => $this->attachmentsFor(AttachmentEntityType::EXPENSE, $e->getId(), $e->getOrganization()),
         ];
     }
 
@@ -291,6 +307,7 @@ final class GdprExportService
             'notify_days_before' => $r->getNotifyDaysBefore(),
             'completed_at' => $r->getCompletedAt()?->format(\DATE_ATOM),
             'last_notified_at' => $r->getLastNotifiedAt()?->format(\DATE_ATOM),
+            'attachments' => $this->attachmentsFor(AttachmentEntityType::REMINDER, $r->getId(), $r->getOrganization()),
         ];
     }
 

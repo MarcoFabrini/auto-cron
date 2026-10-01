@@ -24,6 +24,9 @@ final class UpdateProfileRequest
 
         #[Assert\Choice(choices: ['it', 'en'])]
         public string $locale = 'it',
+
+        /** Obbligatoria solo se l'email cambia: un access token rubato non deve bastare per prendere l'account. */
+        public ?string $currentPassword = null,
     ) {
     }
 }

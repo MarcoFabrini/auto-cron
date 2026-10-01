@@ -17,6 +17,7 @@ import { REMINDER_TYPES, type Reminder } from '@/api/types/reminder';
 import { reminderSchema, type ReminderFormData } from '@/schemas/reminder.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
+import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
 
 export interface ReminderFormProps {
   vehicleId: number;
@@ -39,19 +40,22 @@ export function ReminderForm({
 }: ReminderFormProps) {
   const { t } = useTranslation();
 
+  const initialValues: ReminderFormData = {
+    vehicleId,
+    type: defaultValues?.type ?? 'custom',
+    description: defaultValues?.description ?? '',
+    dueDate: defaultValues?.dueDate ?? null,
+    dueKm: defaultValues?.dueKm ?? null,
+    notifyDaysBefore: defaultValues?.notifyDaysBefore ?? 30,
+  };
+
   const form = useForm<ReminderFormData>({
     resolver: zodResolver(reminderSchema),
-    defaultValues: {
-      vehicleId,
-      type: defaultValues?.type ?? 'custom',
-      description: defaultValues?.description ?? '',
-      dueDate: defaultValues?.dueDate ?? null,
-      dueKm: defaultValues?.dueKm ?? null,
-      notifyDaysBefore: defaultValues?.notifyDaysBefore ?? 30,
-    },
+    defaultValues: initialValues,
   });
+  useResyncPristineForm(form, defaultValues, initialValues);
 
-  useServerFieldErrors(form, error);
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   const errors = form.formState.errors;
   const tErr = (key: string | undefined) =>
@@ -135,7 +139,7 @@ export function ReminderForm({
         )}
       </FormField>
 
-      {error instanceof ApiError && error.title !== 'validation_failed' && (
+      {error instanceof ApiError && (error.title !== 'validation_failed' || hasUnmapped) && (
         <Alert variant="error">
           {t(`errors.${error.title}`, { defaultValue: error.detail ?? error.title })}
         </Alert>

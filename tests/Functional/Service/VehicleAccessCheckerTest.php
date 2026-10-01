@@ -101,7 +101,7 @@ final class VehicleAccessCheckerTest extends KernelTestCase
         self::assertFalse($this->checker->canDelete($user, $vehicle));
     }
 
-    public function testMemberWithEditorShareCanEditButNotDelete(): void
+    public function testLegacyEditorShareIsReadOnly(): void
     {
         $user = UserFactory::createOne();
         $vehicle = VehicleFactory::createOne();
@@ -116,9 +116,12 @@ final class VehicleAccessCheckerTest extends KernelTestCase
             'role' => ShareRole::EDITOR,
         ]);
 
-        self::assertSame('share_editor', $this->checker->level($user, $vehicle));
-        self::assertTrue($this->checker->canEdit($user, $vehicle));
+        // Una condivisione non modifica nulla: il vecchio ruolo `editor` vale come `viewer`.
+        self::assertSame('share_viewer', $this->checker->level($user, $vehicle));
+        self::assertTrue($this->checker->canView($user, $vehicle));
+        self::assertFalse($this->checker->canEdit($user, $vehicle));
         self::assertFalse($this->checker->canDelete($user, $vehicle));
+        self::assertFalse($this->checker->canShare($user, $vehicle));
     }
 
     public function testMemberWithAdminShareCanDelete(): void

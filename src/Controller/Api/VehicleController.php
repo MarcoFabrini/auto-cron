@@ -15,6 +15,7 @@ use App\Repository\VehicleRepository;
 use App\Repository\VehicleShareRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentCleaner;
 use App\Service\VehicleAccessChecker;
 use App\Service\VehicleStatsService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,12 +48,13 @@ final class VehicleController extends AbstractController
         private readonly NormalizerInterface $normalizer,
         private readonly ValidatorInterface $validator,
         private readonly VehicleStatsService $stats,
+        private readonly AttachmentCleaner $attachmentCleaner,
     ) {
     }
 
     #[OA\Get(
         summary: 'List accessible vehicles in active organization',
-        description: 'Org admin/owner sees all. Plain member sees only vehicles with explicit VehicleShare. Excludes archived.',
+        description: 'Org admin/owner sees all. Plain member sees only vehicles with explicit VehicleShare. Excludes archived. Each item carries `ownership` (owned = the caller owns it; shared = read-only share; organization = visible through the org owner/admin role) and the caller\'s `permissions`. Dashboard totals, charts, upcoming reminders and notifications only cover `owned` vehicles.',
         responses: [
             new OA\Response(
                 response: 200,
@@ -68,14 +70,22 @@ final class VehicleController extends AbstractController
         $user = $this->getUser();
         $org = $this->orgResolver->resolve();
 
+        $isOrgAdmin = $this->access->isOrgAdmin($user, $org);
         $vehicles = $this->vehicleRepo->findAccessibleByUserInOrganization(
             $user,
             $org,
             includeArchived: false,
-            isOrgAdmin: $this->access->isOrgAdmin($user, $org),
+            isOrgAdmin: $isOrgAdmin,
         );
+        // Una query per tutte le condivisioni dell'utente, non due per veicolo.
+        $shareRoles = $this->shareRepo->findAcceptedRolesByUserInOrganization($user, $org);
 
-        return $this->jsonGroups($vehicles, ['vehicle:list']);
+        $data = [];
+        foreach ($vehicles as $vehicle) {
+            $data[] = $this->normalizeWithAccess($vehicle, ['vehicle:list'], $isOrgAdmin, $shareRoles[(int) $vehicle->getId()] ?? null);
+        }
+
+        return new JsonResponse($data);
     }
 
     #[OA\Get(
@@ -93,26 +103,15 @@ final class VehicleController extends AbstractController
         $vehicle = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
 
-        /** @var User $user */
-        $user = $this->getUser();
-        /** @var array<string, mixed> $data */
-        $data = $this->normalizer->normalize($vehicle, 'json', ['groups' => ['vehicle:read']]);
-        // Permessi dell'utente corrente su QUESTO veicolo: il frontend li usa per
-        // mostrare/nascondere modifica, eliminazione e condivisione (il backend
-        // applica comunque i voter). Condividere richiede EDIT, come createShare.
-        $canEdit = $this->access->canEdit($user, $vehicle);
-        $data['permissions'] = [
-            'canEdit' => $canEdit,
-            'canDelete' => $this->access->canDelete($user, $vehicle),
-            'canShare' => $canEdit,
-        ];
-
-        return new JsonResponse($data);
+        // Permessi e proprietà dell'utente corrente su QUESTO veicolo: il frontend li usa per
+        // mostrare/nascondere modifica, eliminazione e condivisione (il backend applica
+        // comunque i voter). Condividere richiede SHARE, come createShare.
+        return $this->vehicleResponse($vehicle);
     }
 
     #[OA\Post(
         summary: 'Create vehicle in active organization',
-        description: 'Any accepted org member. A plain member becomes the vehicle owner (admin share). Bi-fuel via secondaryFuelType (must differ from fuelType).',
+        description: 'Any accepted org member. The creator becomes the vehicle owner (admin share), org owner/admin included: dashboard totals and notifications only cover owned vehicles. Bi-fuel via secondaryFuelType (must differ from fuelType).',
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: VehicleRequest::class))),
         responses: [
             new OA\Response(response: 201, description: 'Created', content: new OA\JsonContent(ref: new Model(type: Vehicle::class, groups: ['vehicle:read']))),
@@ -150,23 +149,21 @@ final class VehicleController extends AbstractController
 
         $this->em->persist($vehicle);
 
-        // Un member che crea un veicolo ne diventa il proprietario: share `admin`
-        // accettato, così lo vede e lo gestisce (modifica, eliminazione,
-        // condivisione). Org owner/admin hanno già accesso totale via ruolo org.
-        if (!$this->access->isOrgAdmin($user, $org)) {
-            $ownerShare = (new VehicleShare())
-                ->setVehicle($vehicle)
-                ->setUser($user)
-                ->setRole(ShareRole::ADMIN)
-                ->setInvitedBy($user)
-                ->setAcceptedAt(new \DateTimeImmutable());
-            $vehicle->getShares()->add($ownerShare);
-            $this->em->persist($ownerShare);
-        }
+        // Chi crea il veicolo ne diventa il proprietario: share `admin` accettato. Vale anche per
+        // owner/admin dell'org (che l'accesso l'hanno già via ruolo): la proprietà decide di chi
+        // sono totali, grafici e notifiche del veicolo, non solo chi lo vede.
+        $ownerShare = (new VehicleShare())
+            ->setVehicle($vehicle)
+            ->setUser($user)
+            ->setRole(ShareRole::ADMIN)
+            ->setInvitedBy($user)
+            ->setAcceptedAt(new \DateTimeImmutable());
+        $vehicle->getShares()->add($ownerShare);
+        $this->em->persist($ownerShare);
 
         $this->em->flush();
 
-        return $this->jsonGroups($vehicle, ['vehicle:read'], 201);
+        return $this->vehicleResponse($vehicle, 201);
     }
 
     #[OA\Put(
@@ -206,7 +203,7 @@ final class VehicleController extends AbstractController
 
         $this->em->flush();
 
-        return $this->jsonGroups($vehicle, ['vehicle:read']);
+        return $this->vehicleResponse($vehicle);
     }
 
     #[OA\Delete(
@@ -224,8 +221,7 @@ final class VehicleController extends AbstractController
         $vehicle = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::DELETE, $vehicle);
 
-        $this->em->remove($vehicle);
-        $this->em->flush();
+        $this->attachmentCleaner->removeVehicle($vehicle);
 
         return new JsonResponse(null, 204);
     }
@@ -280,7 +276,24 @@ final class VehicleController extends AbstractController
         $vehicle->setArchivedAt(new \DateTimeImmutable());
         $this->em->flush();
 
-        return $this->jsonGroups($vehicle, ['vehicle:read']);
+        return $this->vehicleResponse($vehicle);
+    }
+
+    #[OA\Post(
+        summary: 'Restore an archived vehicle',
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [new OA\Response(response: 200, description: 'Restored')],
+    )]
+    #[Route('/{id}/unarchive', name: 'unarchive', methods: ['POST'], requirements: ['id' => '\d+'])]
+    public function unarchive(int $id): JsonResponse
+    {
+        $vehicle = $this->mustFind($id);
+        $this->denyAccessUnlessGranted(VehicleVoter::DELETE, $vehicle);
+
+        $vehicle->setArchivedAt(null);
+        $this->em->flush();
+
+        return $this->vehicleResponse($vehicle);
     }
 
     // ----- Share management -----
@@ -296,14 +309,14 @@ final class VehicleController extends AbstractController
     public function listShares(int $id): JsonResponse
     {
         $vehicle = $this->mustFind($id);
-        $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
 
         return $this->jsonGroups($this->shareRepo->findByVehicle($vehicle), ['share:read', 'user:list']);
     }
 
     #[OA\Get(
         summary: 'Org members this vehicle can be shared with (names only, no emails)',
-        description: 'Accepted org members with role member, excluding the caller and anyone who already has a share (org owner/admin already see everything). Requires EDIT on the vehicle.',
+        description: 'Accepted org members with role member, excluding the caller and anyone who already has a share (org owner/admin already see everything). Requires SHARE on the vehicle (owner or org owner/admin).',
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
         responses: [
             new OA\Response(
@@ -321,7 +334,7 @@ final class VehicleController extends AbstractController
     public function shareCandidates(int $id): JsonResponse
     {
         $vehicle = $this->mustFind($id);
-        $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
 
         /** @var User $user */
         $user = $this->getUser();
@@ -345,7 +358,7 @@ final class VehicleController extends AbstractController
 
     #[OA\Post(
         summary: 'Share vehicle read-only with one or more org members (auto-accepted)',
-        description: 'Shares are always viewer (read-only). Requires EDIT on the vehicle. Targets are user ids taken from share-candidates; anything else (unknown id, outsider, org owner/admin, yourself) gets the same 422, so it cannot be used to discover accounts. Already-shared ids are ignored (idempotent). The request is atomic: one invalid id rejects all.',
+        description: 'Shares are always viewer (read-only). Requires SHARE on the vehicle (owner or org owner/admin). Targets are user ids taken from share-candidates; anything else (unknown id, outsider, org owner/admin, yourself) gets the same 422, so it cannot be used to discover accounts. Already-shared ids are ignored (idempotent). The request is atomic: one invalid id rejects all.',
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: VehicleShareRequest::class))),
         responses: [
@@ -357,7 +370,7 @@ final class VehicleController extends AbstractController
     public function createShare(int $id, #[MapRequestPayload] VehicleShareRequest $payload): JsonResponse
     {
         $vehicle = $this->mustFind($id);
-        $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
 
         /** @var User $inviter */
         $inviter = $this->getUser();
@@ -415,7 +428,7 @@ final class VehicleController extends AbstractController
     public function deleteShare(int $id, int $shareId): JsonResponse
     {
         $vehicle = $this->mustFind($id);
-        $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
 
         $share = $this->shareRepo->find($shareId);
         if (!$share || $share->getVehicle()->getId() !== $vehicle->getId()) {
@@ -435,6 +448,45 @@ final class VehicleController extends AbstractController
     }
 
     // ----- helpers -----
+
+    /** Dettaglio del veicolo con `ownership` e `permissions` dell'utente corrente. */
+    private function vehicleResponse(Vehicle $vehicle, int $status = 200): JsonResponse
+    {
+        /** @var User $user */
+        $user = $this->getUser();
+        $share = $this->shareRepo->findForUserAndVehicle($user, $vehicle);
+
+        return new JsonResponse($this->normalizeWithAccess(
+            $vehicle,
+            ['vehicle:read'],
+            $this->access->isOrgAdmin($user, $vehicle->getOrganization()),
+            $share !== null && $share->isAccepted() ? $share->getRole() : null,
+        ), $status);
+    }
+
+    /**
+     * Veicolo serializzato + `ownership` e `permissions` dell'utente corrente, calcolati da dati
+     * già caricati (ruolo org + share accettato) con la stessa regola di VehicleAccessChecker.
+     *
+     * @param list<string> $groups
+     * @return array<string, mixed>
+     */
+    private function normalizeWithAccess(Vehicle $vehicle, array $groups, bool $isOrgAdmin, ?ShareRole $acceptedShareRole): array
+    {
+        /** @var array<string, mixed> $data */
+        $data = $this->normalizer->normalize($vehicle, 'json', ['groups' => $groups]);
+
+        $data['ownership'] = match (true) {
+            $acceptedShareRole === ShareRole::ADMIN => 'owned',
+            $isOrgAdmin => 'organization',
+            default => 'shared',
+        };
+        $data['permissions'] = VehicleAccessChecker::permissionsForLevel(
+            VehicleAccessChecker::resolveLevel($isOrgAdmin, $acceptedShareRole),
+        );
+
+        return $data;
+    }
 
     /**
      * @return array<int, true> id degli utenti che hanno già uno share sul veicolo

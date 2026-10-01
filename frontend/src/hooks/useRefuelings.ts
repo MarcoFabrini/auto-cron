@@ -47,8 +47,8 @@ export function useUpdateRefueling(id: number) {
   return useMutation({
     mutationFn: (body: UpdateRefuelingDto) => updateRefueling(id, body),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: refuelingKeys.detail(id) });
-      void qc.invalidateQueries({ queryKey: refuelingKeys.byVehicle(vars.vehicleId) });
+      // Il PUT può spostare la voce su un altro veicolo: si invalida tutto il dominio, non solo il veicolo corrente.
+      void qc.invalidateQueries({ queryKey: refuelingKeys.all });
       invalidateVehicleStats(qc, vars.vehicleId);
     },
   });
@@ -59,7 +59,7 @@ export function useDeleteRefueling(vehicleId: number) {
   return useMutation({
     mutationFn: (id: number) => deleteRefueling(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: refuelingKeys.byVehicle(vehicleId) });
+      void qc.invalidateQueries({ queryKey: refuelingKeys.all });
       invalidateVehicleStats(qc, vehicleId);
     },
   });

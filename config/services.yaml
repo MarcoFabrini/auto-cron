@@ -8,6 +8,9 @@ parameters:
     app_mailer_dsn_default: 'null://null'
     app.mailer_from: '%env(default:app_mailer_from_default:MAILER_FROM)%'
     app_mailer_from_default: 'noreply@autocron.local'
+    # Fuso di calendario dell'istanza (scadenze dei promemoria). Override: APP_TIMEZONE.
+    app.timezone: '%env(default:app_timezone_default:APP_TIMEZONE)%'
+    app_timezone_default: 'Europe/Rome'
 
 services:
     _defaults:
@@ -32,6 +35,10 @@ services:
     _instanceof:
         App\Service\Push\PushNotifierInterface:
             tags: ['app.push_notifier']
+
+    App\Service\AppClock:
+        arguments:
+            $timezone: '%app.timezone%'
 
 when@test:
     parameters:

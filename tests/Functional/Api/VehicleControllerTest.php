@@ -334,16 +334,54 @@ final class VehicleControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(401);
     }
 
-    public function testOrgAdminCreatingVehicleGetsNoOwnerShare(): void
+    public function testOrgAdminCreatingVehicleBecomesItsOwner(): void
     {
-        [, , $token] = $this->createAuthenticatedUser();
+        [$admin, , $token] = $this->createAuthenticatedUser(OrgRole::ADMIN);
 
         $this->jsonRequest('POST', '/api/vehicles', $this->vehiclePayload(), accessToken: $token);
         self::assertResponseStatusCodeSame(201);
+        self::assertSame('owned', $this->jsonBody()['ownership']);
         $id = $this->jsonBody()['id'];
 
+        // Anche owner/admin dell'org: la proprietà decide totali, grafici e notifiche del veicolo.
         $this->jsonRequest('GET', '/api/vehicles/'.$id.'/shares', accessToken: $token);
-        self::assertSame([], $this->jsonBody(), 'Owner/admin ha già accesso totale via ruolo org');
+        $shares = $this->jsonBody();
+        self::assertCount(1, $shares);
+        $ownerShare = reset($shares);
+        self::assertIsArray($ownerShare);
+        self::assertSame('admin', $ownerShare['role']);
+        self::assertSame($admin->getId(), $ownerShare['user']['id']);
+    }
+
+    public function testListTellsOwnedSharedAndOrganizationVehiclesApart(): void
+    {
+        [$admin, $org, $adminToken] = $this->createAuthenticatedUser(OrgRole::ADMIN);
+        $member = $this->memberOf($org, 'Mario', 'Rossi');
+        $memberToken = $this->tokenForOrg($member, $org);
+
+        $adminCar = VehicleFactory::createOne(['organization' => $org, 'name' => 'Auto admin']);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $adminCar, 'user' => $admin]);
+        $memberCar = VehicleFactory::createOne(['organization' => $org, 'name' => 'Auto membro']);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $memberCar, 'user' => $member]);
+        // L'admin condivide la sua auto col membro: per lui è in sola lettura.
+        VehicleShareFactory::createOne(['vehicle' => $adminCar, 'user' => $member]);
+
+        $this->jsonRequest('GET', '/api/vehicles', accessToken: $adminToken);
+        self::assertResponseIsSuccessful();
+        $byName = array_column($this->jsonBody(), null, 'name');
+        self::assertSame('owned', $byName['Auto admin']['ownership']);
+        self::assertSame('organization', $byName['Auto membro']['ownership'], 'L\'admin la vede, ma non è sua');
+        self::assertTrue($byName['Auto membro']['permissions']['canEdit']);
+
+        $this->jsonRequest('GET', '/api/vehicles', accessToken: $memberToken);
+        $byName = array_column($this->jsonBody(), null, 'name');
+        self::assertSame('owned', $byName['Auto membro']['ownership']);
+        self::assertSame(['canEdit' => true, 'canDelete' => true, 'canShare' => true], $byName['Auto membro']['permissions']);
+        self::assertSame('shared', $byName['Auto admin']['ownership']);
+        self::assertSame(['canEdit' => false, 'canDelete' => false, 'canShare' => false], $byName['Auto admin']['permissions']);
+
+        $this->jsonRequest('GET', '/api/vehicles/'.$adminCar->getId(), accessToken: $memberToken);
+        self::assertSame('shared', $this->jsonBody()['ownership']);
     }
 
     public function testMemberCreatingVehicleBecomesOwnerAndCannotRevokeIt(): void

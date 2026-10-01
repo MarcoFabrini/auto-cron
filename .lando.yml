@@ -45,7 +45,7 @@ services:
     type: mailpit
 
   node:
-    type: node:20
+    type: node:22
     build:
       - cd /app/frontend && npm install
     working_dir: /app/frontend
@@ -64,6 +64,7 @@ tooling:
     env:
       APP_ENV: test
       APP_DEBUG: "0"
+      XDEBUG_MODE: "off"
   phpstan:
     service: appserver
     cmd: php vendor/bin/phpstan analyse --memory-limit=512M --no-progress
