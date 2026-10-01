@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\Organization;
 use App\Entity\User;
 use App\Entity\Vehicle;
+use App\Enum\ShareRole;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -48,6 +49,28 @@ class VehicleRepository extends ServiceEntityRepository
         }
 
         return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Veicoli non archiviati di cui `$owner` è proprietario nell'org: share `admin` accettato.
+     * Né quelli condivisi con lui né, per owner/admin dell'org, quelli degli altri membri
+     * (stessa regola di {@see ReminderRepository::findUpcomingForOwner}). È la fonte dei
+     * veicoli su cui si calcolano i grafici della dashboard.
+     *
+     * @return list<Vehicle>
+     */
+    public function findOwnedByUserInOrganization(User $owner, Organization $org): array
+    {
+        return $this->createQueryBuilder('v')
+            ->innerJoin('v.shares', 'vs', 'WITH', 'vs.user = :owner AND vs.role = :ownerRole AND vs.acceptedAt IS NOT NULL')
+            ->where('v.organization = :org')
+            ->andWhere('v.archivedAt IS NULL')
+            ->setParameter('org', $org)
+            ->setParameter('owner', $owner)
+            ->setParameter('ownerRole', ShareRole::ADMIN)
+            ->orderBy('v.id', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     public function findOneInOrganization(int $id, Organization $org): ?Vehicle

@@ -1,16 +1,4 @@
 #!/bin/sh
-# Rilascio pubblico su GitHub — rispetta i path export-ignore in .gitattributes
-# (config privata e docs esclusi).
-#
-# Uso: scripts/publish-github.sh <remote> [--tag vX.Y.Z] [--force]
-#
-# Pubblica uno snapshot del repo come un nuovo commit in cima al main del remote: la storia pubblica
-# cresce di un commit per rilascio e la storia privata (messaggi, autori) non esce mai. Il push è
-# normale: se nel frattempo qualcuno ha aggiornato il remote, fallisce invece di sovrascrivere.
-# --force ignora la storia del remote e la sostituisce con il solo snapshot (solo di proposito);
-# --tag crea il tag di versione (che fa partire la pubblicazione dell'immagine con quel numero).
-#
-# Autore del commit: l'identità git configurata (user.name/user.email), o GIT_AUTHOR_NAME/EMAIL.
 set -eu
 
 usage() {
@@ -51,8 +39,6 @@ cd "$TMP"
 git init -q -b main
 git remote add origin "$GITHUB_REMOTE"
 
-# Si parte dal main pubblico, se esiste: il nuovo commit lo ha come genitore e il suo albero è
-# esattamente lo snapshot (indice vuoto + add -A: i file tolti qui spariscono anche lì).
 CHANGED=1
 if [ "$FORCE" -eq 0 ] && git fetch -q --depth=1 origin main 2>/dev/null; then
     git reset -q --soft FETCH_HEAD

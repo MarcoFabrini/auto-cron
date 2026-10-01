@@ -23,6 +23,7 @@ final class VehicleStatsService
     public function __construct(
         private readonly Connection $db,
         private readonly CacheInterface $cache,
+        private readonly FuelConsumption $consumption,
     ) {
     }
 
@@ -102,18 +103,7 @@ final class VehicleStatsService
     // ----- internals -----
 
     /**
-     * Media km/l per ogni fuel type del veicolo.
-     * Algoritmo fill-to-fill: tra ogni coppia di rifornimenti full_tank consecutivi
-     * sullo stesso fuel_type, il consumo è (km2 - km1) / (litri di TUTTI i
-     * rifornimenti, pieni e parziali, effettuati nell'intervallo, esclusi quelli
-     * del pieno di partenza). Un pieno riporta il serbatoio allo stesso livello,
-     * quindi la somma dei litri immessi tra due pieni corrisponde esattamente al
-     * consumo, a prescindere da quanti rifornimenti parziali ci sono nel mezzo.
-     *
-     * Veicoli bi-fuel: se tra i due pieni c'è un rifornimento dell'ALTRO carburante, i km
-     * percorsi nell'intervallo sono in parte fatti con quello: attribuirli tutti al primo ne
-     * sovrastimerebbe il consumo. Quell'intervallo viene scartato (il pieno successivo fa da nuovo
-     * punto di partenza).
+     * Media km/l per ogni fuel type del veicolo, con l'algoritmo fill-to-fill di {@see FuelConsumption}.
      *
      * @param list<FuelType> $fuels
      * @return array<string, float|null>  key = fuel_type value
@@ -132,58 +122,10 @@ final class VehicleStatsService
 
         $result = [];
         foreach ($fuels as $fuel) {
-            $result[$fuel->value] = $this->avgKmPerLiterFillToFill($rows, $fuel->value);
+            $result[$fuel->value] = $this->consumption->kmPerLiter($this->consumption->intervals($rows, $fuel->value));
         }
 
         return $result;
-    }
-
-    /**
-     * @param list<array{km: string|int, liters: string, full_tank: string|int|bool, fuel_type: string, refueled_at: string, id: string|int}> $rows tutti i rifornimenti del veicolo, in ordine
-     */
-    private function avgKmPerLiterFillToFill(array $rows, string $fuel): ?float
-    {
-        $totalKm = 0;
-        $totalLiters = 0.0;
-
-        $lastFullKm = null;
-        $litersSinceLastFull = 0.0;
-        $mixedWithOtherFuel = false;
-
-        foreach ($rows as $row) {
-            if ($row['fuel_type'] !== $fuel) {
-                // Rifornimento dell'altro carburante: l'intervallo in corso non è più "puro".
-                $mixedWithOtherFuel = true;
-                continue;
-            }
-
-            if ($lastFullKm !== null) {
-                $litersSinceLastFull += (float) $row['liters'];
-            }
-
-            if (!$this->isFullTank($row['full_tank'])) {
-                continue;
-            }
-
-            if ($lastFullKm !== null && !$mixedWithOtherFuel) {
-                $deltaKm = (int) $row['km'] - $lastFullKm;
-                if ($deltaKm > 0 && $litersSinceLastFull > 0) {
-                    $totalKm += $deltaKm;
-                    $totalLiters += $litersSinceLastFull;
-                }
-            }
-
-            $lastFullKm = (int) $row['km'];
-            $litersSinceLastFull = 0.0;
-            $mixedWithOtherFuel = false;
-        }
-
-        return $totalLiters > 0 ? round($totalKm / $totalLiters, 2) : null;
-    }
-
-    private function isFullTank(string|int|bool $value): bool
-    {
-        return (bool) (is_string($value) ? (int) $value : $value);
     }
 
     /** Odometro più alto tra rifornimenti e manutenzioni (0 se nessun record). */

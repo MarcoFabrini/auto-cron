@@ -7,6 +7,8 @@ import {
   formatBytes,
   todayIso,
   daysUntil,
+  formatMonth,
+  intlLocale,
 } from './format';
 
 describe('formatKm', () => {
@@ -119,5 +121,37 @@ describe('daysUntil', () => {
   it('null se non è una data YYYY-MM-DD', () => {
     expect(daysUntil('25/09/2026', now)).toBeNull();
     expect(daysUntil('', now)).toBeNull();
+  });
+});
+
+describe('formatMonth', () => {
+  it('mese breve e anno a 2 cifre nella lingua scelta', () => {
+    expect(formatMonth('2026-05', 'it-IT')).toBe('mag 26');
+    expect(formatMonth('2026-05', 'en-GB')).toBe('May 26');
+    expect(formatMonth('2025-12')).toBe('dic 25');
+  });
+  it('non slitta al mese prima in un fuso a ovest di Greenwich', () => {
+    const prev = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      expect(formatMonth('2026-01', 'en-GB')).toBe('Jan 26');
+    } finally {
+      if (prev === undefined) delete process.env.TZ;
+      else process.env.TZ = prev;
+    }
+  });
+  it('input non valido restituito così com\'è', () => {
+    expect(formatMonth('2026-13')).toBe('2026-13');
+    expect(formatMonth('maggio')).toBe('maggio');
+    expect(formatMonth('')).toBe('');
+  });
+});
+
+describe('intlLocale', () => {
+  it('inglese → en-GB, tutto il resto → it-IT', () => {
+    expect(intlLocale('en')).toBe('en-GB');
+    expect(intlLocale('en-US')).toBe('en-GB');
+    expect(intlLocale('it')).toBe('it-IT');
+    expect(intlLocale('fr')).toBe('it-IT');
   });
 });

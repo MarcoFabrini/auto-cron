@@ -32,6 +32,14 @@ export { ReminderBadge, type ReminderBadgeProps } from './ReminderBadge';
 export { ReminderCard, type ReminderCardProps } from './ReminderCard';
 export { ReminderForm, type ReminderFormProps } from './ReminderForm';
 export { UpcomingRemindersCard } from './UpcomingRemindersCard';
+export { DashboardCharts } from './DashboardCharts';
+export { ChartsSection, type ChartsSectionProps } from './ChartsSection';
+export { VehicleCharts, type VehicleChartsProps } from './VehicleCharts';
+export { VehicleAddRecordMenu, type VehicleAddRecordMenuProps } from './VehicleAddRecordMenu';
+export { MonthlySpendingChart, type MonthlySpendingChartProps } from './MonthlySpendingChart';
+export { SpendingByCategoryChart, type SpendingByCategoryChartProps } from './SpendingByCategoryChart';
+export { KmDrivenChart, type KmDrivenChartProps } from './KmDrivenChart';
+export { ConsumptionTrendChart, type ConsumptionTrendChartProps } from './ConsumptionTrendChart';
 export {
   VehicleMaintenanceTab,
   type VehicleMaintenanceTabProps,

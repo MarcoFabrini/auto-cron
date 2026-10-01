@@ -106,8 +106,35 @@
     "upcoming_reminders": "Upcoming reminders",
     "upcoming_reminders_empty": "No due dates on your vehicles in the next 30 days.",
     "partial_totals": "Some vehicles failed to load: totals are partial.",
-    "owned_only_hint_one": "Totals and due dates only cover your own vehicles: {{count}} vehicle you can see but don't own is left out.",
-    "owned_only_hint_other": "Totals and due dates only cover your own vehicles: {{count}} vehicles you can see but don't own are left out."
+    "owned_only_hint_one": "Totals, charts and due dates only cover your own vehicles: {{count}} vehicle you can see but don't own is left out.",
+    "owned_only_hint_other": "Totals, charts and due dates only cover your own vehicles: {{count}} vehicles you can see but don't own are left out.",
+    "charts": {
+      "title": "Trends",
+      "subtitle": "Last {{months}} months, your vehicles only",
+      "monthly_spending": "Monthly spending",
+      "spending_by_category": "Spending by category",
+      "km_driven": "Distance driven",
+      "consumption": "Average consumption",
+      "series": {
+        "refuelings": "Refuelings",
+        "maintenances": "Maintenance",
+        "expenses": "Expenses",
+        "km": "Km"
+      },
+      "category": {
+        "fuel": "Fuel",
+        "maintenance": "Maintenance",
+        "rest": "Other categories"
+      },
+      "unit_km_per_liter": "km/l",
+      "empty": {
+        "spending": "No spending in this period.",
+        "categories": "No spending to break down in this period.",
+        "km": "No odometer readings in this period.",
+        "consumption": "At least two consecutive full tanks are needed to work out consumption."
+      },
+      "invalid_response": "Chart data is invalid: try again later."
+    }
   },
   "quick_add": {
     "open": "Add",
@@ -480,7 +507,12 @@
     "restore": "Restore",
     "restored": "Vehicle restored",
     "shared_read_only": "Shared · read-only",
-    "read_only_no_changes": "This vehicle is shared with you read-only: you can see its data but not change it."
+    "read_only_no_changes": "This vehicle is shared with you read-only: you can see its data but not change it.",
+    "charts": {
+      "title": "Vehicle charts",
+      "subtitle": "Last {{months}} months of this vehicle"
+    },
+    "add_record": "Add"
   },
   "error_page": {
     "back_home": "Back to home",

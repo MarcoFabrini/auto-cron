@@ -21,6 +21,8 @@ import {
   AttachmentsSection,
   ConfirmDialog,
   FuelTypeBadge,
+  VehicleAddRecordMenu,
+  VehicleCharts,
   VehicleExpensesTab,
   VehicleMaintenanceTab,
   VehicleRefuelingTab,
@@ -35,8 +37,8 @@ import { useToast } from '@/hooks/useToast';
 import { formatKm } from '@/lib/format';
 
 /**
- * VehicleDetailPage — read-only sezione info + tab placeholder.
- * Future tab: maintenance, refueling, expenses, reminders, attachments.
+ * VehicleDetailPage — grafici del veicolo (se non duplicano la dashboard), info, statistiche e
+ * tab di manutenzioni, rifornimenti, spese, promemoria e allegati.
  */
 export function VehicleDetailPage() {
   const { t } = useTranslation();
@@ -80,6 +82,10 @@ export function VehicleDetailPage() {
         action={
           canEdit || canDelete ? (
             <>
+              {/* Solo desktop: su mobile si aggiunge dal "+" della barra in basso. */}
+              {canEdit && !archived && (
+                <VehicleAddRecordMenu vehicleId={data.id} className="hidden md:inline-flex" />
+              )}
               {canEdit && (
                 <Button variant="outline" size="icon" asChild aria-label={t('actions.edit')}>
                   <Link to={`/vehicles/${data.id}/edit`}>
@@ -120,6 +126,8 @@ export function VehicleDetailPage() {
           </Button>
         </Alert>
       )}
+
+      <VehicleCharts vehicle={data} />
 
       <Card>
         <CardHeader>

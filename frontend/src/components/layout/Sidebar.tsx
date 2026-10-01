@@ -9,7 +9,8 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
 
 /**
- * Sidebar — nav verticale desktop (md+). Nascosta su mobile.
+ * Sidebar — nav verticale desktop (md+). Nascosta su mobile. Solo le voci `desktop`: i record
+ * dei veicoli (manutenzioni, rifornimenti, spese, promemoria) si raggiungono dal veicolo.
  * Impostazioni separata in fondo, sotto le altre voci, con l'avatar utente
  * al posto dell'icona (coerente con la Topbar mobile).
  */
@@ -20,7 +21,7 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
   const title = membership?.organization.name?.trim() || t('app.name');
 
-  const mainEntries = NAVIGATION.filter((entry) => entry.to !== '/settings');
+  const mainEntries = NAVIGATION.filter((entry) => entry.desktop !== false && entry.to !== '/settings');
   const settingsActive = pathname === '/settings' || pathname.startsWith('/settings/');
 
   return (

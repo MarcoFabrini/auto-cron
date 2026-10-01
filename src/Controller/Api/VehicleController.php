@@ -16,11 +16,13 @@ use App\Repository\VehicleShareRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
 use App\Service\AttachmentCleaner;
+use App\Service\DashboardChartsService;
 use App\Service\VehicleAccessChecker;
 use App\Service\VehicleStatsService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
 use Nelmio\ApiDocBundle\Attribute\Model;
@@ -49,6 +51,7 @@ final class VehicleController extends AbstractController
         private readonly ValidatorInterface $validator,
         private readonly VehicleStatsService $stats,
         private readonly AttachmentCleaner $attachmentCleaner,
+        private readonly DashboardChartsService $charts,
     ) {
     }
 
@@ -260,6 +263,51 @@ final class VehicleController extends AbstractController
         $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
 
         return new JsonResponse($this->stats->compute($vehicle));
+    }
+
+    /**
+     * Serie mensili per i grafici del solo veicolo: stesso contratto di GET /api/dashboard/charts.
+     * Le vede chi può vedere il veicolo (proprietario, owner/admin dell'org, condivisione in sola
+     * lettura); a differenza della dashboard un veicolo archiviato è incluso.
+     */
+    #[OA\Get(
+        summary: 'Monthly chart series of a single vehicle',
+        description: 'Same payload and `months` window as GET /api/dashboard/charts, computed on this vehicle only (fuelTypes = its own fuels). Visible to anyone with VEHICLE_VIEW: owner, org owner/admin, read-only shares. Archived vehicles are included.',
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(
+                name: 'months',
+                in: 'query',
+                description: 'Window size in months, current month included. Clamped to [1, 24].',
+                schema: new OA\Schema(type: 'integer', default: DashboardChartsService::DEFAULT_MONTHS, minimum: 1, maximum: DashboardChartsService::MAX_MONTHS),
+            ),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Chart series (see GET /api/dashboard/charts)',
+                content: new OA\JsonContent(properties: [
+                    new OA\Property(property: 'from', type: 'string', example: '2025-11'),
+                    new OA\Property(property: 'to', type: 'string', example: '2026-10'),
+                    new OA\Property(property: 'fuelTypes', type: 'array', items: new OA\Items(type: 'string')),
+                    new OA\Property(property: 'months', type: 'array', items: new OA\Items(type: 'object')),
+                    new OA\Property(property: 'spendingByCategory', type: 'array', items: new OA\Items(type: 'object')),
+                    new OA\Property(property: 'totals', type: 'object'),
+                ]),
+            ),
+            new OA\Response(response: 403, description: 'No VIEW permission'),
+            new OA\Response(response: 404, description: 'Not found / cross-tenant'),
+        ],
+    )]
+    #[Route('/{id}/charts', name: 'charts', methods: ['GET'], requirements: ['id' => '\d+'])]
+    public function charts(int $id, Request $request): JsonResponse
+    {
+        $vehicle = $this->mustFind($id);
+        $this->denyAccessUnlessGranted(VehicleVoter::VIEW, $vehicle);
+
+        $months = max(1, min(DashboardChartsService::MAX_MONTHS, (int) $request->query->get('months', DashboardChartsService::DEFAULT_MONTHS)));
+
+        return new JsonResponse(DashboardChartsService::toJson($this->charts->computeForVehicle($vehicle, $months)));
     }
 
     #[OA\Post(

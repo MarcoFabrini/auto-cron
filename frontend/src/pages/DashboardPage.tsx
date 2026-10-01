@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Car, ChevronRight, Euro, Fuel, Wrench } from 'lucide-react';
 import { Alert, Card, CardContent, Skeleton } from '@/components/ui';
-import { StatCard, UpcomingRemindersCard } from '@/components/features';
+import { DashboardCharts, StatCard, UpcomingRemindersCard } from '@/components/features';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { formatCurrency } from '@/lib/format';
@@ -41,10 +41,14 @@ export function DashboardPage() {
 
       <UpcomingRemindersCard />
 
-      {/* Accesso alla lista veicoli (la home ospiterà grafici/info in futuro: solo dash.vehicles, i propri) */}
+      {/* Grafici solo a lista veicoli caricata e con almeno un veicolo proprio (stessa regola dei
+          totali): altrimenti niente sezione e niente richiesta. Il backend filtra comunque da sé. */}
+      {dash.vehicles.length > 0 ? <DashboardCharts /> : null}
+
+      {/* Accesso alla lista veicoli: solo mobile, su desktop c'è la voce Veicoli nella sidebar */}
       <Link
         to="/vehicles"
-        className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden"
       >
         <Card className="transition-colors hover:border-primary hover:bg-accent/40">
           <CardContent standalone className="flex items-center gap-4">

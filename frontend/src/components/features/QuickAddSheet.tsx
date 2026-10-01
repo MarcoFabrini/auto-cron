@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Bell, ChevronLeft, Fuel, Plus, Receipt, Wrench, type LucideIcon } from 'lucide-react';
+import { ChevronLeft, Plus } from 'lucide-react';
 import {
   Button,
   Card,
@@ -13,28 +13,22 @@ import {
   Skeleton,
 } from '@/components/ui';
 import { VehiclePicker } from './VehiclePicker';
+import { VEHICLE_RECORD_ACTIONS } from './vehicleRecordActions';
 import { useVehicles } from '@/hooks/useVehicles';
 import type { Vehicle } from '@/api/types/vehicle';
 
 /**
  * QuickAddSheet — hub centrale di tutte le aggiunte (pulsante "+" della BottomNav).
  * Flusso a 2 step: prima si sceglie il veicolo (o "Nuovo veicolo"), poi cosa
- * aggiungere per quel veicolo. Con un solo veicolo il primo step non ha nulla da
- * scegliere e si salta (il "indietro" lo riapre, per aggiungerne un altro).
- * Sostituisce i singoli pulsanti "+" sparsi nelle tab.
+ * aggiungere per quel veicolo. Si sceglie solo fra i veicoli propri: non quelli
+ * condivisi in sola lettura né, per owner/admin dell'org, quelli degli altri membri
+ * (che si gestiscono dal loro dettaglio). Con un solo veicolo proprio il primo step
+ * non ha nulla da scegliere e si salta (il "indietro" lo riapre, per aggiungerne un altro).
  */
 export interface QuickAddSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-/** Azioni del secondo step: rotta `/new` + label i18n + icona. */
-const ENTITY_ACTIONS: { path: string; labelKey: string; Icon: LucideIcon }[] = [
-  { path: '/maintenance/new', labelKey: 'maintenance.new', Icon: Wrench },
-  { path: '/refueling/new', labelKey: 'refueling.new', Icon: Fuel },
-  { path: '/expenses/new', labelKey: 'expense.new', Icon: Receipt },
-  { path: '/reminders/new', labelKey: 'reminder.new', Icon: Bell },
-];
 
 export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
   const { t } = useTranslation();
@@ -59,8 +53,7 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
     navigate(to);
   }
 
-  // Solo i veicoli a cui si possono aggiungere dati: quelli condivisi in sola lettura no.
-  const list = (vehicles ?? []).filter((v) => v.permissions.canEdit);
+  const list = (vehicles ?? []).filter((v) => v.ownership === 'owned');
   const onlyVehicle = list.length === 1 ? (list[0] ?? null) : null;
   const vehicle = selected ?? onlyVehicle;
   const currentStep = step ?? (onlyVehicle ? 'entity' : 'vehicle');
@@ -68,7 +61,19 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto overscroll-contain">
-        {currentStep === 'vehicle' || !vehicle ? (
+        {isLoading ? (
+          // Finché la lista non arriva non si sa se c'è qualcosa da scegliere: niente step veicolo.
+          <>
+            <SheetHeader>
+              <SheetTitle>{t('quick_add.open')}</SheetTitle>
+            </SheetHeader>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-lg" />
+              ))}
+            </div>
+          </>
+        ) : currentStep === 'vehicle' || !vehicle ? (
           <>
             <SheetHeader>
               <SheetTitle>{t('quick_add.choose_vehicle')}</SheetTitle>
@@ -79,15 +84,7 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
                 {t('quick_add.new_vehicle')}
               </Button>
 
-              {isLoading && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {Array.from({ length: 2 }).map((_, i) => (
-                    <Skeleton key={i} className="h-24 w-full rounded-lg" />
-                  ))}
-                </div>
-              )}
-
-              {!isLoading && list.length > 0 && (
+              {list.length > 0 && (
                 <VehiclePicker
                   vehicles={list}
                   onSelect={(id) => {
@@ -115,7 +112,7 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
               </SheetTitle>
             </SheetHeader>
             <div className="grid grid-cols-2 gap-3 pt-2">
-              {ENTITY_ACTIONS.map(({ path, labelKey, Icon }) => (
+              {VEHICLE_RECORD_ACTIONS.map(({ path, labelKey, Icon }) => (
                 <button
                   key={path}
                   type="button"

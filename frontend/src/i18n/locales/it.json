@@ -106,8 +106,35 @@
     "upcoming_reminders": "Prossime scadenze",
     "upcoming_reminders_empty": "Nessuna scadenza sui tuoi veicoli nei prossimi 30 giorni.",
     "partial_totals": "Alcuni veicoli non si sono caricati: i totali sono parziali.",
-    "owned_only_hint_one": "Totali e scadenze riguardano solo i tuoi veicoli: {{count}} veicolo che vedi ma non è tuo è escluso.",
-    "owned_only_hint_other": "Totali e scadenze riguardano solo i tuoi veicoli: {{count}} veicoli che vedi ma non sono tuoi sono esclusi."
+    "owned_only_hint_one": "Totali, grafici e scadenze riguardano solo i tuoi veicoli: {{count}} veicolo che vedi ma non è tuo è escluso.",
+    "owned_only_hint_other": "Totali, grafici e scadenze riguardano solo i tuoi veicoli: {{count}} veicoli che vedi ma non sono tuoi sono esclusi.",
+    "charts": {
+      "title": "Andamento",
+      "subtitle": "Ultimi {{months}} mesi, solo i tuoi veicoli",
+      "monthly_spending": "Spese mensili",
+      "spending_by_category": "Spese per categoria",
+      "km_driven": "Km percorsi",
+      "consumption": "Consumo medio",
+      "series": {
+        "refuelings": "Rifornimenti",
+        "maintenances": "Manutenzioni",
+        "expenses": "Spese",
+        "km": "Km"
+      },
+      "category": {
+        "fuel": "Carburante",
+        "maintenance": "Manutenzione",
+        "rest": "Altre categorie"
+      },
+      "unit_km_per_liter": "km/l",
+      "empty": {
+        "spending": "Nessuna spesa nel periodo.",
+        "categories": "Nessuna spesa da suddividere nel periodo.",
+        "km": "Nessuna lettura del contachilometri nel periodo.",
+        "consumption": "Servono almeno due pieni consecutivi per calcolare il consumo."
+      },
+      "invalid_response": "Dati dei grafici non validi: riprova più tardi."
+    }
   },
   "quick_add": {
     "open": "Aggiungi",
@@ -480,7 +507,12 @@
     "restore": "Ripristina",
     "restored": "Veicolo ripristinato",
     "shared_read_only": "Condiviso · sola lettura",
-    "read_only_no_changes": "Questo veicolo è condiviso con te in sola lettura: puoi vederne i dati ma non modificarli."
+    "read_only_no_changes": "Questo veicolo è condiviso con te in sola lettura: puoi vederne i dati ma non modificarli.",
+    "charts": {
+      "title": "Grafici del veicolo",
+      "subtitle": "Ultimi {{months}} mesi di questo veicolo"
+    },
+    "add_record": "Aggiungi"
   },
   "error_page": {
     "back_home": "Torna alla home",

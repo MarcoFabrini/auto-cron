@@ -5,11 +5,13 @@ import {
   createVehicle,
   deleteVehicle,
   getVehicle,
+  getVehicleCharts,
   getVehicleStats,
   listVehicles,
   updateVehicle,
 } from '@/api/endpoints/vehicles';
 import type { CreateVehicleDto, UpdateVehicleDto } from '@/api/types/vehicle';
+import { DASHBOARD_CHART_MONTHS, dashboardKeys } from '@/hooks/useDashboardCharts';
 
 /**
  * Query keys factory — single source of truth per cache invalidation.
@@ -49,9 +51,37 @@ export function useCanEditVehicle(vehicleId: number): boolean | undefined {
 /** Chiave delle statistiche di un veicolo (km attuali, consumi, costi): condivisa da dettaglio, dashboard e badge promemoria. */
 export const vehicleStatsKey = (id: number) => [...vehicleKeys.detail(id), 'stats'] as const;
 
-/** Da chiamare quando cambia un dato che alimenta le statistiche (rifornimenti, manutenzioni, spese). */
+/**
+ * Chiavi dei grafici di un veicolo, sotto il suo dettaglio: update/archive/unarchive (che
+ * invalidano `detail(id)`) e delete (che lo rimuove) le coprono già per prefisso.
+ */
+export const vehicleChartsKeys = {
+  all: (id: number) => [...vehicleKeys.detail(id), 'charts'] as const,
+  window: (id: number, months: number) => [...vehicleChartsKeys.all(id), months] as const,
+};
+
+/**
+ * Da chiamare quando cambia un dato che alimenta le statistiche (rifornimenti, manutenzioni, spese).
+ * Invalida anche i grafici del veicolo e quelli della dashboard, che aggregano gli stessi dati.
+ */
 export function invalidateVehicleStats(qc: QueryClient, id: number) {
   void qc.invalidateQueries({ queryKey: vehicleStatsKey(id) });
+  void qc.invalidateQueries({ queryKey: vehicleChartsKeys.all(id) });
+  void qc.invalidateQueries({ queryKey: dashboardKeys.all });
+}
+
+/** Grafici del solo veicolo (stesso contratto della dashboard), visibili a chi vede il veicolo. */
+export function useVehicleCharts(
+  id: number,
+  months = DASHBOARD_CHART_MONTHS,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: vehicleChartsKeys.window(id, months),
+    queryFn: () => getVehicleCharts(id, months),
+    enabled: id > 0 && (options.enabled ?? true),
+    staleTime: 60_000,
+  });
 }
 
 export function useVehicleStats(id: number, options: { enabled?: boolean } = {}) {
@@ -68,6 +98,8 @@ export function useCreateVehicle() {
     mutationFn: (body: CreateVehicleDto) => createVehicle(body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
+      // Cambia l'insieme dei veicoli propri su cui si calcolano i grafici.
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -79,6 +111,8 @@ export function useUpdateVehicle(id: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
+      // Km iniziali e carburanti entrano nei km percorsi e nelle serie di consumo.
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -91,6 +125,7 @@ export function useDeleteVehicle() {
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
       qc.removeQueries({ queryKey: vehicleKeys.detail(id) });
       qc.removeQueries({ queryKey: vehicleStatsKey(id) });
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
       // Il veicolo cancellato porta via i figli (cascade): le loro liste in cache sono stale.
       // Radici letterali per non creare import circolari con gli hook dei figli.
       for (const root of ['maintenances', 'refuelings', 'expenses', 'reminders', 'attachments']) {
@@ -107,6 +142,8 @@ export function useUnarchiveVehicle() {
     onSuccess: (_data, id) => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
+      // I grafici escludono gli archiviati.
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }
@@ -118,6 +155,8 @@ export function useArchiveVehicle() {
     onSuccess: (_data, id) => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
+      // I grafici escludono gli archiviati.
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
     },
   });
 }

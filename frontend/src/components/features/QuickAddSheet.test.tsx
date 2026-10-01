@@ -84,15 +84,35 @@ describe('QuickAddSheet', () => {
     expect(await screen.findByRole('button', { name: /Nuovo veicolo/ })).toBeInTheDocument();
   });
 
-  it('non propone i veicoli condivisi in sola lettura', async () => {
-    mockedAuthFetch.mockResolvedValue([vehicle(4, 'Panda'), vehicle(5, 'Ducati', 'shared')]);
+  it.each([
+    ['condiviso in sola lettura', 'shared' as const],
+    ['di un altro membro (owner/admin dell\'org)', 'organization' as const],
+  ])('con un solo veicolo proprio non chiede la scelta anche se vede un veicolo %s', async (_case, ownership) => {
+    mockedAuthFetch.mockResolvedValue([vehicle(4, 'Panda'), vehicle(5, 'Ducati', ownership)]);
     const user = userEvent.setup();
     renderSheet();
 
-    // Resta un solo veicolo modificabile: si salta la scelta e si va dritti su Panda.
+    // Si va dritti su cosa aggiungere per Panda, l'unico veicolo proprio.
     await user.click(await screen.findByText('Nuovo rifornimento'));
 
     expect(screen.getByTestId('where')).toHaveTextContent('/refueling/new?vehicleId=4');
     expect(screen.queryByText('Ducati')).not.toBeInTheDocument();
+  });
+
+  it('mentre la lista si carica non mostra la scelta del veicolo', () => {
+    mockedAuthFetch.mockReturnValue(new Promise(() => {}));
+    renderSheet();
+
+    expect(screen.queryByText('Scegli un veicolo')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Nuovo veicolo/ })).not.toBeInTheDocument();
+  });
+
+  it('con più veicoli propri la scelta mostra solo quelli', async () => {
+    mockedAuthFetch.mockResolvedValue([vehicle(4, 'Panda'), vehicle(5, 'Ducati'), vehicle(6, 'Altrui', 'organization')]);
+    renderSheet();
+
+    expect(await screen.findByText('Panda')).toBeInTheDocument();
+    expect(screen.getByText('Ducati')).toBeInTheDocument();
+    expect(screen.queryByText('Altrui')).not.toBeInTheDocument();
   });
 });

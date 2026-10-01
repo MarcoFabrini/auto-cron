@@ -1,6 +1,7 @@
 import { authFetch } from '@/api/client';
 import type { CreateVehicleDto, UpdateVehicleDto, Vehicle } from '@/api/types/vehicle';
 import type { VehicleStats } from '@/api/types/vehicleStats';
+import { dashboardChartsSchema, type DashboardCharts } from '@/api/types/dashboardCharts';
 
 /**
  * Vehicle API endpoints — thin wrapper su authFetch.
@@ -45,4 +46,10 @@ export function archiveVehicle(id: number) {
 
 export function getVehicleStats(id: number) {
   return authFetch<VehicleStats>(`/api/vehicles/${id}/stats`);
+}
+
+/** Grafici del solo veicolo degli ultimi `months` mesi: stesso contratto della dashboard. */
+export async function getVehicleCharts(id: number, months: number): Promise<DashboardCharts> {
+  const raw = await authFetch<unknown>(`/api/vehicles/${id}/charts?months=${months}`);
+  return dashboardChartsSchema.parse(raw);
 }

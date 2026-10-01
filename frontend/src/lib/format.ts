@@ -43,6 +43,25 @@ export function formatDate(iso: string | null | undefined, locale = 'it-IT'): st
   }).format(d);
 }
 
+/** Locale `Intl` della lingua dell'interfaccia (`i18n.language`): "en…" → en-GB, altrimenti it-IT. */
+export function intlLocale(language: string): string {
+  return language.startsWith('en') ? 'en-GB' : 'it-IT';
+}
+
+const YEAR_MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/**
+ * Mese di calendario "2026-05" → "mag 26" / "May 26" (etichette brevi degli assi dei grafici).
+ * Come le date di calendario, formattato in UTC per non slittare al mese prima. Input non
+ * valido restituito così com'è.
+ */
+export function formatMonth(yyyyMm: string, locale = 'it-IT'): string {
+  const match = YEAR_MONTH.exec(yyyyMm);
+  if (!match) return yyyyMm;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
+  return new Intl.DateTimeFormat(locale, { month: 'short', year: '2-digit', timeZone: 'UTC' }).format(date);
+}
+
 /** Giorno di calendario LOCALE "YYYY-MM-DD" (mai `toISOString`: è UTC e slitta a cavallo della mezzanotte). */
 export function toLocalIsoDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
