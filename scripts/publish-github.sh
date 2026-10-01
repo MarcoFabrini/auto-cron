@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-    echo "Uso: $0 <remote> [--tag vX.Y.Z] [--force]" >&2
+    echo "Uso: $0 <remote> [--tag vX.Y.Z] [--message \"testo\"] [--force]" >&2
     exit 2
 }
 
@@ -11,10 +11,12 @@ GITHUB_REMOTE="${1:-}"
 shift
 
 TAG=""
+MESSAGE=""
 FORCE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --tag) [ $# -ge 2 ] || usage; TAG="$2"; shift 2 ;;
+        --message) [ $# -ge 2 ] || usage; MESSAGE="$2"; shift 2 ;;
         --force) FORCE=1; shift ;;
         *) usage ;;
     esac
@@ -49,7 +51,7 @@ else
 fi
 
 if [ "$CHANGED" -eq 1 ]; then
-    git commit -q -m "release: $(date +%Y-%m-%d)${TAG:+ ($TAG)}"
+    git commit -q -m "${MESSAGE:-release: $(date +%Y-%m-%d)${TAG:+ ($TAG)}}"
     if [ "$FORCE" -eq 1 ]; then
         git push --force -u origin main
     else
@@ -61,7 +63,7 @@ else
 fi
 
 if [ -n "$TAG" ]; then
-    git tag -a "$TAG" -m "$TAG"
+    git tag -a "$TAG" -m "${MESSAGE:-$TAG}"
     git push origin "$TAG"
 fi
 
