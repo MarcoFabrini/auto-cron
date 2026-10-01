@@ -37,7 +37,7 @@ jobs:
       CORS_ALLOW_ORIGIN: '^https?://localhost(:[0-9]+)?$'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install mariadb-client (mariadb-dump)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq mariadb-client
@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
@@ -130,7 +130,7 @@ jobs:
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - name: Build prod image (no push)
         uses: docker/build-push-action@v6
@@ -153,7 +153,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Owner lowercase
         id: owner
