@@ -23,8 +23,8 @@
 # Update: take a backup first (docker compose exec api php bin/console
 # app:backup:create), then docker compose pull && docker compose up -d.
 # AUTO_MIGRATE=true applies database migrations on start, so an update changes
-# the schema; to stay on a known version set AUTOCRON_TAG (e.g. v0.2.0) instead
-# of the default "latest".
+# the schema; to stay on a known version set AUTOCRON_TAG to a release without
+# the v (e.g. 0.1.2) instead of the default "latest".
 #
 # For development use Lando (lando start), not this file.
 

@@ -73,7 +73,7 @@ docker compose exec api php bin/console app:backup:create   # backup first
 docker compose pull && docker compose up -d
 ```
 
-DB migrations run automatically on startup, so an update can change the schema: take a backup first. To stay on a known version set `AUTOCRON_TAG` in `.env` (e.g. `v0.2.0`) instead of the default `latest`.
+DB migrations run automatically on startup, so an update can change the schema: take a backup first. To stay on a known version set `AUTOCRON_TAG` in `.env` to a release without the `v` (e.g. `0.1.2`, or `0.1` for its latest patch) instead of the default `latest`, which follows the newest release.
 
 ### Backup
 
@@ -163,7 +163,7 @@ docker compose exec api php bin/console app:backup:create   # prima un backup
 docker compose pull && docker compose up -d
 ```
 
-Le migrazioni DB girano da sole all'avvio, quindi un aggiornamento può cambiare lo schema: fai prima un backup. Per restare su una versione precisa imposta `AUTOCRON_TAG` in `.env` (es. `v0.2.0`) invece del default `latest`.
+Le migrazioni DB girano da sole all'avvio, quindi un aggiornamento può cambiare lo schema: fai prima un backup. Per restare su una versione precisa imposta `AUTOCRON_TAG` in `.env` a una release senza la `v` (es. `0.1.2`, oppure `0.1` per la sua ultima patch) invece del default `latest`, che segue l'ultima release.
 
 ### Backup
 

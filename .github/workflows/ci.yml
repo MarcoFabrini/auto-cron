@@ -1,11 +1,11 @@
 name: CI
 
+# Solo al rilascio di una versione (tag vX.Y.Z da scripts/publish-github.sh): i push su main non
+# rifanno test né immagini. workflow_dispatch permette di lanciare i test a mano, senza pubblicare.
 on:
   push:
-    branches: [main]
     tags: ['v*.*.*']
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -124,30 +124,14 @@ jobs:
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
-  docker-build:
-    name: Dockerfile builds (PR check)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build prod image (no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/app/Dockerfile
-          target: prod
-          push: false
-          cache-from: type=gha
-
   images:
     name: Build & push images (GHCR)
     runs-on: ubuntu-latest
     needs: [backend, frontend]
 
-    # main → :latest e :<sha>; tag vX.Y.Z → :X.Y.Z (e :X.Y) per poter fissare AUTOCRON_TAG a una versione
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    # tag vX.Y.Z → :X.Y.Z, :X.Y, :<sha> e :latest (latest solo per le versioni stabili, non per i
+    # pre-release come v1.0.0-rc.1): AUTOCRON_TAG si può fissare a una versione
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: read
       packages: write
@@ -164,8 +148,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ steps.owner.outputs.owner }}/autocron-app
+          flavor: |
+            latest=auto
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=long,prefix=
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

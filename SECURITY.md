@@ -6,7 +6,7 @@ AutoCron is a personal project I work on in my spare time. It comes with no warr
 
 ## Supported versions
 
-Only the latest commit on `main`. Older versions don't get fixes.
+Only the latest release (the newest `vX.Y.Z` tag, image `latest`). Older versions don't get fixes.
 
 ## Reporting a vulnerability
 
@@ -37,7 +37,7 @@ AutoCron è un progetto personale che porto avanti nel tempo libero. Non ha gara
 
 ## Versioni supportate
 
-Solo l'ultimo commit su `main`. Le versioni precedenti non ricevono correzioni.
+Solo l'ultima release (il tag `vX.Y.Z` più recente, immagine `latest`). Le versioni precedenti non ricevono correzioni.
 
 ## Segnalare una vulnerabilità
 
