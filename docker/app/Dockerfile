@@ -1,4 +1,6 @@
-FROM node:22-alpine AS frontend-builder
+# Il frontend compilato è JavaScript statico, uguale per ogni architettura: si costruisce sempre sulla piattaforma
+# del builder (nativa). Sotto QEMU arm64 node va in "Illegal instruction" e il build sarebbe lentissimo.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* ./
