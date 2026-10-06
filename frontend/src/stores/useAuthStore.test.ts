@@ -85,6 +85,7 @@ describe('useAuthStore', () => {
   });
 
   it('non scrive nulla negli storage del browser (il token in localStorage sarebbe esposto a XSS)', async () => {
+    // Il rilevatore di lingua di i18next scrive la lingua ("it", "en-US") in localStorage: lecito. Conta il token.
     const writes: string[] = [];
     const spyStorage = { getItem: () => null, removeItem: () => {}, setItem: (_k: string, v: string) => void writes.push(v) };
     vi.stubGlobal('localStorage', spyStorage);
@@ -95,6 +96,6 @@ describe('useAuthStore', () => {
     freshStore.getState().setAuthenticated('segreto-da-non-salvare', userWith('it'));
 
     expect(freshStore.getState().accessToken).toBe('segreto-da-non-salvare');
-    expect(writes).toEqual([]);
+    expect(writes.filter((value) => value.includes('segreto-da-non-salvare'))).toEqual([]);
   });
 });
