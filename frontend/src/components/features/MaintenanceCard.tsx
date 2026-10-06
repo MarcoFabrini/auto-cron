@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Wrench } from 'lucide-react';
 import { Badge, Card, CardContent } from '@/components/ui';
-import { formatCurrency, formatDate, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 import type { Maintenance } from '@/api/types/maintenance';
 
 /**
@@ -14,6 +14,7 @@ export interface MaintenanceCardProps {
 
 export function MaintenanceCard({ maintenance }: MaintenanceCardProps) {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const m = maintenance;
 
   return (
@@ -29,13 +30,13 @@ export function MaintenanceCard({ maintenance }: MaintenanceCardProps) {
               <h3 className="truncate text-base font-semibold">
                 {t(`maintenance.type_options.${m.type}`)}
               </h3>
-              <span className="shrink-0 text-sm font-medium">{formatCurrency(m.cost)}</span>
+              <span className="shrink-0 text-sm font-medium">{fmt.currency(m.cost)}</span>
             </div>
             <p className="line-clamp-2 text-sm text-muted-foreground">{m.description}</p>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{formatDate(m.performedAt)}</span>
+              <span>{fmt.date(m.performedAt)}</span>
               <span>·</span>
-              <span>{formatKm(m.km)}</span>
+              <span>{fmt.km(m.km)}</span>
               {m.workshop && (
                 <>
                   <span>·</span>

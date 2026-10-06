@@ -24,7 +24,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           'placeholder:text-muted-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          invalid && 'border-destructive focus-visible:ring-destructive',
+          invalid && 'border-destructive-text focus-visible:ring-destructive-text',
           className,
         )}
         {...props}

@@ -1,4 +1,4 @@
-import { forwardRef, type HTMLAttributes } from 'react';
+import { forwardRef, type ElementType, type HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -35,9 +35,14 @@ export const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivEleme
 );
 CardHeader.displayName = 'CardHeader';
 
-export const CardTitle = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div
+export interface CardTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+  /** Tag del titolo (default `div`, senza semantica): `h2`/`h3` dove la card è una sezione della pagina. */
+  as?: ElementType;
+}
+
+export const CardTitle = forwardRef<HTMLElement, CardTitleProps>(
+  ({ className, as: Component = 'div', ...props }, ref) => (
+    <Component
       ref={ref}
       className={cn('text-base font-semibold leading-none tracking-tight md:text-lg', className)}
       {...props}

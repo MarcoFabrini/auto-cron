@@ -10,8 +10,9 @@ export default defineConfig({
     react(),
     !process.env.VITEST &&
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // Il SW lo registra l'app (lib/pwaUpdate): niente registerSW.js generato, così il controllo
+      // degli aggiornamenti e l'avviso di nuova versione stanno nel bundle (CSP script-src 'self').
+      injectRegister: false,
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
@@ -83,6 +84,8 @@ export default defineConfig({
           query: ['@tanstack/react-query'],
           forms: ['react-hook-form', '@hookform/resolvers', 'zod'],
           ui: ['lucide-react', 'class-variance-authority', 'clsx', 'tailwind-merge'],
+          // recharts solo in un chunk con nome proprio: lo importa in lazy ChartsGrid, quindi
+          // index.html NON lo precarica (verificare con una build in una cartella scratch).
           charts: ['recharts'],
           i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
         },

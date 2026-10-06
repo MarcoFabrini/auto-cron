@@ -44,6 +44,8 @@ const config: Config = {
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
+          // Per testo e icone: --destructive è pensato come sfondo
+          text: 'hsl(var(--destructive-text))',
         },
         muted: {
           DEFAULT: 'hsl(var(--muted))',

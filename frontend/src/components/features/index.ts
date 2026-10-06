@@ -1,9 +1,12 @@
 export { AuthBrand, type AuthBrandProps } from './AuthBrand';
+export { AuthLink } from './AuthLink';
 export { EditProfileDialog, type EditProfileDialogProps } from './EditProfileDialog';
 export { ChangePasswordDialog, type ChangePasswordDialogProps } from './ChangePasswordDialog';
+export { OrganizationSwitcher, type OrganizationSwitcherProps } from './OrganizationSwitcher';
 export { UserAvatar, type UserAvatarProps } from './UserAvatar';
 export { EditOrganizationDialog, type EditOrganizationDialogProps } from './EditOrganizationDialog';
 export { MembersCard, type MembersCardProps } from './MembersCard';
+export { TransferVehicleDialog, type TransferVehicleDialogProps } from './TransferVehicleDialog';
 export { VehicleShareCard, type VehicleShareCardProps } from './VehicleShareCard';
 export { AttachmentUploader, type AttachmentUploaderProps } from './AttachmentUploader';
 export { AttachmentList, type AttachmentListProps } from './AttachmentList';
@@ -20,6 +23,7 @@ export { MaintenanceCard, type MaintenanceCardProps } from './MaintenanceCard';
 export { MaintenanceForm, type MaintenanceFormProps } from './MaintenanceForm';
 export { StatCard, type StatCardProps } from './StatCard';
 export { VehicleCard, type VehicleCardProps } from './VehicleCard';
+export { ArchivedVehiclesSection, type ArchivedVehiclesSectionProps } from './ArchivedVehiclesSection';
 export { VehicleStatsCard, type VehicleStatsCardProps } from './VehicleStatsCard';
 export { VehiclePicker, type VehiclePickerProps } from './VehiclePicker';
 export { QuickAddSheet, type QuickAddSheetProps } from './QuickAddSheet';
@@ -34,12 +38,9 @@ export { ReminderForm, type ReminderFormProps } from './ReminderForm';
 export { UpcomingRemindersCard } from './UpcomingRemindersCard';
 export { DashboardCharts } from './DashboardCharts';
 export { ChartsSection, type ChartsSectionProps } from './ChartsSection';
+// I singoli grafici (recharts) non stanno nel barrel: li carica in lazy ChartsSection via ChartsGrid.
 export { VehicleCharts, type VehicleChartsProps } from './VehicleCharts';
 export { VehicleAddRecordMenu, type VehicleAddRecordMenuProps } from './VehicleAddRecordMenu';
-export { MonthlySpendingChart, type MonthlySpendingChartProps } from './MonthlySpendingChart';
-export { SpendingByCategoryChart, type SpendingByCategoryChartProps } from './SpendingByCategoryChart';
-export { KmDrivenChart, type KmDrivenChartProps } from './KmDrivenChart';
-export { ConsumptionTrendChart, type ConsumptionTrendChartProps } from './ConsumptionTrendChart';
 export {
   VehicleMaintenanceTab,
   type VehicleMaintenanceTabProps,

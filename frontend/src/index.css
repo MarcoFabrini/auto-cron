@@ -19,8 +19,11 @@
     --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
+    /* Sfondo del pulsante distruttivo: il testo bianco sopra arriva a >= 4.5:1 */
+    --destructive: 0 72% 45%;
     --destructive-foreground: 210 40% 98%;
+    /* Rosso come COLORE DEL TESTO/icona (errori, badge, alert): >= 4.5:1 su background, card e muted */
+    --destructive-text: 0 72% 40%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
@@ -51,6 +54,8 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+    /* Il rosso scuro di --destructive su sfondo scuro è ~2:1: per il testo serve uno chiaro */
+    --destructive-text: 0 91% 71%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
@@ -108,6 +113,18 @@
   .pb-safe {
     padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
   }
+  /* Solo per la BottomNav: metà dell'inset. L'inset intero (34px su iPhone con home indicator) lascia una
+     fascia vuota sotto le icone e la barra sembra sollevata; l'indicatore occupa solo gli ultimi pixel. */
+  .pb-safe-nav {
+    padding-bottom: max(calc(env(safe-area-inset-bottom) * 0.5), 0.5rem);
+  }
+  /* Spazio che il contenuto di <main> lascia in fondo per non finire sotto la BottomNav fissa, calcolato
+     dalla barra stessa: 5.5rem = riga della barra (bordo + 3rem), sporgenza del "+" (1.5rem) e 1rem di
+     respiro; più lo stesso padding-bottom di .pb-safe. Con inset 0 fa 96px (il vecchio pb-24), su
+     iPhone con home indicator segue l'inset invece di restare fisso. */
+  .pb-nav-clearance {
+    padding-bottom: calc(5.5rem + max(calc(env(safe-area-inset-bottom) * 0.5), 0.5rem));
+  }
   .pt-safe {
     padding-top: max(env(safe-area-inset-top), 0.5rem);
   }
@@ -118,5 +135,44 @@
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Un h1 sr-only in testa a un contenitore `space-y-*` (PageHeader con solo `srTitle`) è fuori
+   dal flusso, ma il fratello successivo prenderebbe comunque il margine di separazione:
+   senza questa regola la pagina si sposterebbe in basso di una riga. */
+@layer components {
+  [class*='space-y-'] > .sr-only:first-child + * {
+    margin-top: 0 !important;
+  }
+}
+
+/* Chi chiede meno movimento al sistema non vede animazioni né transizioni: le animazioni di
+   ingresso/uscita (tailwindcss-animate) e le transizioni si riducono a un istante, che lascia
+   comunque scattare gli eventi di fine animazione usati da Radix per smontare dialog e toast. */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body {
+    scroll-behavior: auto;
+  }
+
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Skeleton: resta un blocco fermo, senza pulsare. */
+  .animate-pulse {
+    animation: none !important;
+  }
+
+  /* Spinner: l'unico indicatore di attività, resta in rotazione ma lenta. */
+  .animate-spin {
+    animation-duration: 3s !important;
+    animation-iteration-count: infinite !important;
   }
 }

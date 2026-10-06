@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom';
 import { Car, Plus } from 'lucide-react';
 import { Alert, Button, Skeleton } from '@/components/ui';
 import { PageHeader } from '@/components/layout';
-import { EmptyState, VehicleCard } from '@/components/features';
-import { useVehicles } from '@/hooks/useVehicles';
+import { ArchivedVehiclesSection, EmptyState, VehicleCard } from '@/components/features';
+import { useArchivedVehicles, useVehicles } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 
 /**
@@ -15,10 +15,13 @@ export function VehicleListPage() {
   const { t } = useTranslation();
   const errorMessage = useApiErrorMessage();
   const { data, isLoading, error } = useVehicles();
+  // Se la query degli archiviati fallisce la sezione semplicemente non compare: la lista resta usabile.
+  const archived = useArchivedVehicles();
 
   return (
     <div className="space-y-6">
       <PageHeader
+        srTitle={t('nav.vehicles')}
         action={
           <Button asChild className="hidden md:inline-flex">
             <Link to="/vehicles/new">
@@ -62,6 +65,8 @@ export function VehicleListPage() {
           ))}
         </div>
       )}
+
+      <ArchivedVehiclesSection vehicles={archived.data ?? []} />
     </div>
   );
 }

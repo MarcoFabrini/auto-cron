@@ -7,6 +7,7 @@ import {
 import * as ToastPrimitive from '@radix-ui/react-toast';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 /**
@@ -33,7 +34,7 @@ export const ToastViewport = forwardRef<
 ToastViewport.displayName = ToastPrimitive.Viewport.displayName;
 
 const toastVariants = cva(
-  'group pointer-events-auto relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-md border p-4 pr-8 shadow-lg backdrop-blur-md transition-all ' +
+  'group pointer-events-auto relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-md border p-4 pr-10 shadow-lg backdrop-blur-md transition-all ' +
     'data-[swipe=cancel]:translate-y-0 data-[swipe=end]:translate-y-[var(--radix-toast-swipe-end-y)] ' +
     'data-[swipe=move]:translate-y-[var(--radix-toast-swipe-move-y)] data-[swipe=move]:transition-none ' +
     'data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out ' +
@@ -43,7 +44,7 @@ const toastVariants = cva(
       variant: {
         default: 'border bg-background text-foreground',
         success: 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400',
-        error: 'border-destructive/50 bg-destructive/10 text-destructive',
+        error: 'border-destructive/50 bg-destructive/10 text-destructive-text',
         warning: 'border-yellow-500/50 bg-yellow-500/10 text-yellow-800 dark:text-yellow-300',
       },
     },
@@ -81,20 +82,24 @@ ToastAction.displayName = ToastPrimitive.Action.displayName;
 export const ToastClose = forwardRef<
   ElementRef<typeof ToastPrimitive.Close>,
   ComponentPropsWithoutRef<typeof ToastPrimitive.Close>
->(({ className, ...props }, ref) => (
-  <ToastPrimitive.Close
-    ref={ref}
-    className={cn(
-      'absolute right-2 top-2 rounded-md p-1 opacity-60 transition-opacity hover:opacity-100',
-      'focus:outline-none focus:ring-2 focus:ring-ring',
-      className,
-    )}
-    aria-label="Close"
-    {...props}
-  >
-    <X className="size-4" />
-  </ToastPrimitive.Close>
-));
+>(({ className, ...props }, ref) => {
+  const { t } = useTranslation();
+  return (
+    <ToastPrimitive.Close
+      ref={ref}
+      className={cn(
+        // bersaglio da 44px: l'icona resta a ~20px dall'angolo come prima
+        'absolute right-0 top-0 flex min-h-touch min-w-touch items-center justify-center rounded-md opacity-60 transition-opacity hover:opacity-100',
+        'focus:outline-none focus:ring-2 focus:ring-ring',
+        className,
+      )}
+      aria-label={t('actions.close')}
+      {...props}
+    >
+      <X className="size-4" />
+    </ToastPrimitive.Close>
+  );
+});
 ToastClose.displayName = ToastPrimitive.Close.displayName;
 
 export const ToastTitle = forwardRef<

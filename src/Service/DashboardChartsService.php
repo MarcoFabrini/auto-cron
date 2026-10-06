@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Organization;
 use App\Entity\User;
 use App\Entity\Vehicle;
+use App\Enum\RecurringPeriod;
 use App\Repository\VehicleRepository;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
@@ -28,6 +29,13 @@ use Doctrine\DBAL\Connection;
  * dipenderebbe da chi è proprietario di ogni veicolo toccato, quello del veicolo varia con la
  * finestra e il mese corrente; le query aggregate su indici (vehicle_id, data) costano poco e lato
  * client React Query evita le richieste ripetute.
+ *
+ * Le spese ricorrenti entrano a ogni addebito già avvenuto che cade nella finestra ({@see RecurringSchedule}):
+ * quelle singole restano in SQL (`recurring = 0`), le ricorrenti si leggono con UNA query in più per
+ * tutti i veicoli e si espandono in PHP per mese e per categoria. Il risultato dipende dal giorno
+ * corrente (oggi come limite degli addebiti), ma i grafici non sono in cache, quindi nessun ritardo.
+ * Le tre viste di spesa (serie mensile, totale, categorie) derivano dagli stessi importi e
+ * tornano sempre alla pari.
  *
  * Gli importi si sommano in centesimi interi (niente errori di arrotondamento dei float) e si
  * restituiscono come stringhe a 2 decimali, come il resto delle API.
@@ -63,6 +71,7 @@ final class DashboardChartsService
         private readonly VehicleRepository $vehicleRepo,
         private readonly AppClock $clock,
         private readonly FuelConsumption $consumption,
+        private readonly RecurringSchedule $schedule,
     ) {
     }
 
@@ -133,6 +142,16 @@ final class DashboardChartsService
         $ids = self::ids($vehicles);
         $spending = $ids === [] ? [] : $this->monthlySpendingCents($ids, $from, $until);
         $expenseCategories = $ids === [] ? [] : $this->expenseCategoryCents($ids, $from, $until);
+        if ($ids !== []) {
+            // Addebiti delle spese ricorrenti nella finestra, sommati a quelli delle spese singole.
+            $recurring = $this->recurringExpenseCents($ids, $firstMonth, $currentMonth->modify('+1 month'), $this->clock->today());
+            foreach ($recurring['months'] as $key => $cents) {
+                $spending[$key]['expenses'] = ($spending[$key]['expenses'] ?? 0) + $cents;
+            }
+            foreach ($recurring['categories'] as $category => $cents) {
+                $expenseCategories[$category] = ($expenseCategories[$category] ?? 0) + $cents;
+            }
+        }
         $kmDriven = $ids === [] ? [] : $this->monthlyKmDriven($vehicles, $monthKeys, $from, $until);
         $consumption = $ids === [] ? [] : $this->monthlyConsumption($vehicles, $from, $until);
 
@@ -209,7 +228,7 @@ final class DashboardChartsService
              UNION ALL
              SELECT 'expenses', DATE_FORMAT(occurred_at, '%Y-%m') AS ym, SUM(amount)
              FROM expenses
-             WHERE vehicle_id IN (:ids) AND occurred_at >= :from AND occurred_at < :until
+             WHERE vehicle_id IN (:ids) AND occurred_at >= :from AND occurred_at < :until AND recurring = 0
              GROUP BY ym",
             ['ids' => $ids, 'from' => $from, 'until' => $until],
             ['ids' => ArrayParameterType::INTEGER],
@@ -235,7 +254,7 @@ final class DashboardChartsService
         $rows = $this->db->fetchAllAssociative(
             'SELECT category, SUM(amount) AS amount
              FROM expenses
-             WHERE vehicle_id IN (:ids) AND occurred_at >= :from AND occurred_at < :until
+             WHERE vehicle_id IN (:ids) AND occurred_at >= :from AND occurred_at < :until AND recurring = 0
              GROUP BY category',
             ['ids' => $ids, 'from' => $from, 'until' => $until],
             ['ids' => ArrayParameterType::INTEGER],
@@ -247,6 +266,54 @@ final class DashboardChartsService
         }
 
         return $result;
+    }
+
+    /**
+     * Addebiti delle spese ricorrenti che cadono nella finestra, in centesimi per mese e per categoria.
+     * Una sola query per tutti i veicoli: si leggono le ricorrenti già iniziate prima della fine della
+     * finestra e non finite prima del suo inizio; poi ogni spesa si espande con {@see RecurringSchedule}.
+     *
+     * @param list<int> $ids
+     * @return array{months: array<string, int>, categories: array<string, int>}
+     */
+    private function recurringExpenseCents(array $ids, \DateTimeImmutable $from, \DateTimeImmutable $until, \DateTimeImmutable $today): array
+    {
+        /** @var list<array{amount: string, category: string, occurred_at: string, recurring_period: string|null, recurring_until: string|null}> $rows */
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT amount, category, occurred_at, recurring_period, recurring_until
+             FROM expenses
+             WHERE vehicle_id IN (:ids) AND recurring = 1
+               AND occurred_at < :until AND (recurring_until IS NULL OR recurring_until >= :from)',
+            ['ids' => $ids, 'from' => $from->format('Y-m-d'), 'until' => $until->format('Y-m-d')],
+            ['ids' => ArrayParameterType::INTEGER],
+        );
+
+        $months = [];
+        $categories = [];
+        foreach ($rows as $row) {
+            $period = $row['recurring_period'] !== null ? RecurringPeriod::tryFrom($row['recurring_period']) : null;
+            $start = new \DateTimeImmutable($row['occurred_at']);
+            // Ricorrente senza periodo (dato incoerente, l'API non lo ammette): vale come spesa singola.
+            $charges = $period === null
+                ? [$start]
+                : $this->schedule->chargesInWindow(
+                    $period,
+                    $start,
+                    $from,
+                    $until,
+                    $today,
+                    $row['recurring_until'] !== null ? new \DateTimeImmutable($row['recurring_until']) : null,
+                );
+
+            $amount = self::cents($row['amount']);
+            foreach ($charges as $charge) {
+                $key = $charge->format('Y-m');
+                $months[$key] = ($months[$key] ?? 0) + $amount;
+                $categories[$row['category']] = ($categories[$row['category']] ?? 0) + $amount;
+            }
+        }
+
+        return ['months' => $months, 'categories' => $categories];
     }
 
     /**

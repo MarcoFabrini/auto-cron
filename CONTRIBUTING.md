@@ -19,6 +19,8 @@ lando npm run typecheck
 lando npm run test
 ```
 
+CI runs only on version tags (`v*.*.*`) and on manual dispatch, not on pull requests or pushes to branches: this local run is the only gate before merging, so run all five commands, not just the ones you think your change touches.
+
 ## Setup
 
 You need [Lando](https://lando.dev).
@@ -35,6 +37,7 @@ lando phpunit
 
 - App: https://autocron.lndo.site (the frontend rebuilds on its own)
 - Dev mail: https://mail.autocron.lndo.site
+- API docs: https://autocron.lndo.site/api/doc (always on in dev; in production it needs `API_DOC_ENABLED=true`)
 
 `compose.yml` is only for deployment, use Lando for development.
 
@@ -45,6 +48,15 @@ docker run -d --name autocron-testdb --network autocron_default --network-alias 
   -e MARIADB_ROOT_PASSWORD=root mariadb:11.4 --innodb-flush-log-at-trx-commit=0 --skip-innodb-doublewrite
 lando ssh -s appserver -c 'cd /app && XDEBUG_MODE=off APP_ENV=test DATABASE_URL="mysql://root:root@testdb:3306/autocron?serverVersion=mariadb-11.4.0&charset=utf8mb4" php bin/phpunit'
 ```
+
+**Production image smoke test.** CI builds and publishes the Docker image on version tags, so a broken image (missing PHP extension, bad entrypoint or Caddyfile, JWT keys, migrations, SPA assets) must never get there unnoticed. `scripts/smoke-image.sh` starts the image against a throw-away MariaDB and checks the SPA, the API, the security headers, the first-user registration and login, the scheduled commands and a restart. It needs only Docker, publishes no host port and removes everything it creates, even on failure:
+
+```bash
+docker build -f docker/app/Dockerfile --target prod -t autocron-smoke:local .
+scripts/smoke-image.sh autocron-smoke:local
+```
+
+Run it when you touch `docker/`, the Caddyfile, `entrypoint.sh`, `composer.json` or the frontend build. On GitHub the same script runs before the image is pushed, and from the "Run workflow" button (job `image-smoke`, which never pushes).
 
 ## Conventions
 
@@ -116,6 +128,8 @@ lando npm run typecheck
 lando npm run test
 ```
 
+La CI gira solo sui tag di versione (`v*.*.*`) e su avvio manuale, non sulle pull request né sui push dei branch: questa esecuzione in locale è l'unico controllo prima del merge, quindi lancia tutti e cinque i comandi, non solo quelli che pensi riguardino la tua modifica.
+
 ## Setup
 
 Serve [Lando](https://lando.dev).
@@ -132,6 +146,7 @@ lando phpunit
 
 - App: https://autocron.lndo.site (il frontend si ricompila da solo)
 - Email di sviluppo: https://mail.autocron.lndo.site
+- Documentazione API: https://autocron.lndo.site/api/doc (sempre attiva in sviluppo; in produzione serve `API_DOC_ENABLED=true`)
 
 `compose.yml` serve solo per il deploy, per sviluppare usa Lando.
 
@@ -142,6 +157,15 @@ docker run -d --name autocron-testdb --network autocron_default --network-alias 
   -e MARIADB_ROOT_PASSWORD=root mariadb:11.4 --innodb-flush-log-at-trx-commit=0 --skip-innodb-doublewrite
 lando ssh -s appserver -c 'cd /app && XDEBUG_MODE=off APP_ENV=test DATABASE_URL="mysql://root:root@testdb:3306/autocron?serverVersion=mariadb-11.4.0&charset=utf8mb4" php bin/phpunit'
 ```
+
+**Smoke test dell'immagine di produzione.** La CI costruisce e pubblica l'immagine Docker sui tag di versione: un'immagine rotta (estensione PHP mancante, entrypoint o Caddyfile sbagliati, chiavi JWT, migrazioni, asset della SPA) non deve arrivarci senza che nessuno se ne accorga. `scripts/smoke-image.sh` avvia l'immagine con un MariaDB usa-e-getta e controlla SPA, API, header di sicurezza, registrazione e login del primo utente, comandi pianificati e un riavvio. Serve solo Docker, non pubblica porte sull'host e rimuove tutto ciò che crea, anche in caso di errore:
+
+```bash
+docker build -f docker/app/Dockerfile --target prod -t autocron-smoke:local .
+scripts/smoke-image.sh autocron-smoke:local
+```
+
+Lanciala quando tocchi `docker/`, il Caddyfile, `entrypoint.sh`, `composer.json` o la build del frontend. Su GitHub lo stesso script gira prima di pubblicare l'immagine, e dal pulsante "Run workflow" (job `image-smoke`, che non pubblica mai).
 
 ## Convenzioni
 

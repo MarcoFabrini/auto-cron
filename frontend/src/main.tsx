@@ -7,34 +7,32 @@ import './i18n';
 import './schemas/errorMap';
 import { router } from './router';
 import { Toaster } from '@/components/ui';
-import { AuthGate } from '@/components/layout';
+import { AuthGate, UpdatePrompt } from '@/components/layout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useAuthStore } from '@/stores/useAuthStore';
+import { clearQueryCacheOnSessionChange } from '@/lib/sessionCache';
+import { shouldRetryQuery } from '@/lib/queryRetry';
+import { installChunkErrorRecovery } from '@/lib/chunkRecovery';
+import { startServiceWorker } from '@/lib/pwaUpdate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: false,
-      retry: (failureCount, error: unknown) => {
-        // Niente retry su errori auth (401/403) o validation (422)
-        if (error instanceof Error && 'status' in error) {
-          const status = (error as { status: number }).status;
-          if ([401, 403, 422, 429].includes(status)) return false;
-        }
-        return failureCount < 2;
-      },
+      retry: shouldRetryQuery,
     },
   },
 });
 
-// Cache di un altro utente mai visibile: si svuota quando la sessione finisce (logout, sessione
-// scaduta, refresh rifiutato) o cambia utente, in un unico punto invece che nei singoli hook.
-useAuthStore.subscribe((state, prev) => {
-  if (prev.user && (!state.user || state.user.id !== prev.user.id)) {
-    queryClient.clear();
-  }
-});
+// Cache di un altro utente o di un'altra organizzazione mai visibile: si svuota quando la sessione
+// finisce o cambia utente, e quando l'org attiva del token cambia (vedi lib/sessionCache).
+clearQueryCacheOnSessionChange(queryClient);
+
+// Chunk spariti dopo un deploy (scheda rimasta aperta): un reload, poi ci pensa l'ErrorBoundary.
+installChunkErrorRecovery();
+
+// Service worker (build di produzione) e controllo periodico delle nuove versioni, vedi lib/pwaUpdate.
+startServiceWorker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -44,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
           <RouterProvider router={router} />
         </AuthGate>
         <Toaster />
+        <UpdatePrompt />
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

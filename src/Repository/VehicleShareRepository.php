@@ -10,6 +10,7 @@ use App\Entity\Vehicle;
 use App\Entity\VehicleShare;
 use App\Enum\ShareRole;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\Query;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -31,6 +32,75 @@ class VehicleShareRepository extends ServiceEntityRepository
     public function findByVehicle(Vehicle $vehicle): array
     {
         return $this->findBy(['vehicle' => $vehicle], ['createdAt' => 'ASC']);
+    }
+
+    /**
+     * Come {@see self::findByVehicle()} ma rilegge le righe dal DB anche se sono già nell'identity map:
+     * serve dopo un lock pessimistico, quando un'altra richiesta può aver cambiato gli share nell'attesa.
+     * Gli share eliminati nel frattempo non compaiono.
+     *
+     * @return list<VehicleShare>
+     */
+    public function findByVehicleRefreshed(Vehicle $vehicle): array
+    {
+        return $this->createQueryBuilder('s')
+            ->innerJoin('s.user', 'u')
+            ->addSelect('u')
+            ->where('s.vehicle = :vehicle')
+            ->setParameter('vehicle', $vehicle)
+            ->orderBy('s.createdAt', 'ASC')
+            ->addOrderBy('s.id', 'ASC')
+            ->getQuery()
+            ->setHint(Query::HINT_REFRESH, true)
+            ->getResult();
+    }
+
+    /**
+     * Il proprietario attuale del veicolo (share `admin` accettato, il più vecchio se per dati legacy
+     * ce ne fosse più di uno), o null per un veicolo orfano.
+     */
+    public function findOwnerShare(Vehicle $vehicle): ?VehicleShare
+    {
+        /** @var VehicleShare|null $share */
+        $share = $this->createQueryBuilder('s')
+            ->addSelect('u')
+            ->innerJoin('s.user', 'u')
+            ->where('s.vehicle = :vehicle')
+            ->andWhere('s.role = :ownerRole')
+            ->andWhere('s.acceptedAt IS NOT NULL')
+            ->setParameter('vehicle', $vehicle)
+            ->setParameter('ownerRole', ShareRole::ADMIN)
+            ->orderBy('s.createdAt', 'ASC')
+            ->addOrderBy('s.id', 'ASC')
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $share;
+    }
+
+    /**
+     * Share di proprietà (`admin` accettato) dell'utente sui veicoli dell'org, archiviati inclusi:
+     * stessa regola di {@see VehicleRepository::findOwnedByUserInOrganization}, ma restituisce le
+     * share e non filtra l'archiviazione (un veicolo archiviato va comunque riassegnato).
+     *
+     * @return list<VehicleShare>
+     */
+    public function findOwnerSharesInOrganization(User $user, Organization $org): array
+    {
+        return $this->createQueryBuilder('s')
+            ->innerJoin('s.vehicle', 'v')
+            ->addSelect('v')
+            ->where('s.user = :user')
+            ->andWhere('s.role = :ownerRole')
+            ->andWhere('s.acceptedAt IS NOT NULL')
+            ->andWhere('v.organization = :org')
+            ->setParameter('user', $user)
+            ->setParameter('ownerRole', ShareRole::ADMIN)
+            ->setParameter('org', $org)
+            ->orderBy('v.id', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 
     /**

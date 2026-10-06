@@ -15,7 +15,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { FUEL_TYPES, VEHICLE_TYPES, type FuelType, type Vehicle } from '@/api/types/vehicle';
-import { vehicleSchema, type VehicleFormData } from '@/schemas/vehicle.schema';
+import { VEHICLE_NOTES_MAX_LENGTH, vehicleSchema, type VehicleFormData } from '@/schemas/vehicle.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
 import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
@@ -227,7 +227,7 @@ export function VehicleForm({
         {(id) => (
           <Textarea
             id={id}
-            maxLength={2000}
+            maxLength={VEHICLE_NOTES_MAX_LENGTH}
             invalid={!!errors.notes}
             {...form.register('notes', { setValueAs: (v) => (v === '' ? null : v) })}
           />

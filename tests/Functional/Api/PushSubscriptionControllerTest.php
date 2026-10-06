@@ -47,6 +47,9 @@ final class PushSubscriptionControllerTest extends ApiTestCase
         yield 'plain http on allowed host' => ['http://fcm.googleapis.com/fcm/send/1'];
         yield 'lookalike suffix' => ['https://evilgoogleapis.com/x'];
         yield 'userinfo trick' => ['https://fcm.googleapis.com@evil.test/x'];
+        yield 'userinfo only user' => ['https://user@fcm.googleapis.com/fcm/send/1'];
+        yield 'other googleapis subdomain' => ['https://storage.googleapis.com/bucket/obj'];
+        yield 'suffix without dot boundary' => ['https://evilnotify.windows.com/x'];
     }
 
     public function testCreateWebSubscriptionSucceeds(): void
@@ -97,5 +100,115 @@ final class PushSubscriptionControllerTest extends ApiTestCase
 
         $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $tokenB);
         self::assertCount(0, $this->jsonBody());
+    }
+
+    public function testUnsubscribeRemovesTheOwnSubscriptionByEndpoint(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $payload = $this->webPayload('https://fcm.googleapis.com/fcm/send/to-remove');
+        $this->jsonRequest('POST', '/api/push-subscriptions', $payload, accessToken: $token);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->jsonRequest('POST', '/api/push-subscriptions/unsubscribe', $payload, accessToken: $token);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $token);
+        self::assertSame([], $this->jsonBody(), 'La subscription del device è stata rimossa');
+    }
+
+    public function testUnsubscribeIsIdempotent(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('POST', '/api/push-subscriptions/unsubscribe', $this->webPayload('https://fcm.googleapis.com/fcm/send/never-registered'), accessToken: $token);
+
+        self::assertResponseStatusCodeSame(204);
+    }
+
+    public function testUnsubscribeDoesNotRemoveAnotherUsersSubscription(): void
+    {
+        [, , $tokenA] = $this->createAuthenticatedUser();
+        [, , $tokenB] = $this->createAuthenticatedUser();
+        $payload = $this->webPayload('https://fcm.googleapis.com/fcm/send/owned-by-a');
+        $this->jsonRequest('POST', '/api/push-subscriptions', $payload, accessToken: $tokenA);
+        self::assertResponseStatusCodeSame(201);
+
+        // B conosce l'endpoint di A: la rimozione è per (utente, endpoint), quindi non trova nulla.
+        $this->jsonRequest('POST', '/api/push-subscriptions/unsubscribe', $payload, accessToken: $tokenB);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $tokenA);
+        self::assertCount(1, $this->jsonBody(), 'La subscription di A è intatta');
+    }
+
+    public function testUnsubscribeRequiresAuthentication(): void
+    {
+        $this->jsonRequest('POST', '/api/push-subscriptions/unsubscribe', $this->webPayload('https://fcm.googleapis.com/fcm/send/anon'));
+
+        self::assertResponseStatusCodeSame(401);
+    }
+
+    public function testDeleteRemovesTheOwnSubscription(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $id = $this->subscribe($token, 'https://fcm.googleapis.com/fcm/send/delete-me');
+
+        $this->jsonRequest('DELETE', '/api/push-subscriptions/'.$id, accessToken: $token);
+        self::assertResponseStatusCodeSame(204);
+
+        $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $token);
+        self::assertSame([], $this->jsonBody());
+    }
+
+    public function testDeleteOfAnotherUsersSubscriptionIsForbiddenAndLeavesItInPlace(): void
+    {
+        [, , $tokenA] = $this->createAuthenticatedUser();
+        [, , $tokenB] = $this->createAuthenticatedUser();
+        $id = $this->subscribe($tokenA, 'https://fcm.googleapis.com/fcm/send/not-yours');
+
+        $this->jsonRequest('DELETE', '/api/push-subscriptions/'.$id, accessToken: $tokenB);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('http.403', $this->jsonBody()['title']);
+        $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $tokenA);
+        self::assertSame([$id], array_column($this->jsonBody(), 'id'), 'La subscription di A esiste ancora');
+    }
+
+    public function testDeleteOfUnknownSubscriptionIsNotFound(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('DELETE', '/api/push-subscriptions/999999', accessToken: $token);
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame('push.not_found', $this->jsonBody()['title']);
+    }
+
+    public function testDeleteRequiresAuthentication(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $id = $this->subscribe($token, 'https://fcm.googleapis.com/fcm/send/anon-delete');
+
+        $this->jsonRequest('DELETE', '/api/push-subscriptions/'.$id);
+        self::assertResponseStatusCodeSame(401);
+
+        $this->jsonRequest('GET', '/api/push-subscriptions', accessToken: $token);
+        self::assertCount(1, $this->jsonBody(), 'Senza token non si cancella nulla');
+    }
+
+    /**
+     * @return array{platform: string, endpoint: string, p256dh: string, authSecret: string}
+     */
+    private function webPayload(string $endpoint): array
+    {
+        return ['platform' => 'web', 'endpoint' => $endpoint, 'p256dh' => 'p256dh-key', 'authSecret' => 'auth-secret'];
+    }
+
+    private function subscribe(string $token, string $endpoint): int
+    {
+        $this->jsonRequest('POST', '/api/push-subscriptions', $this->webPayload($endpoint), accessToken: $token);
+        self::assertResponseStatusCodeSame(201);
+
+        return (int) $this->jsonBody()['id'];
     }
 }

@@ -17,7 +17,9 @@ registerRoute(
   }),
 );
 
-// Skip waiting on update (i client si aggiornano al refresh successivo)
+// Il nuovo worker si attiva subito e prende il controllo delle pagine aperte (clients.claim): le pagine
+// già aperte restano però sul JS vecchio finché non ricaricano. Il `controllerchange` che ne segue fa
+// comparire l'avviso "Nuova versione disponibile" (lib/pwaUpdate), che ricarica su richiesta dell'utente.
 self.addEventListener('install', () => {
   void self.skipWaiting();
 });

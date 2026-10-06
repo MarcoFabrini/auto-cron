@@ -19,7 +19,7 @@ export interface VehicleCardProps {
 
 export function VehicleCard({ vehicle }: VehicleCardProps) {
   const { t } = useTranslation();
-  // archivedAt non è nel group vehicle:list → undefined in lista. Boolean() gestisce undefined+null.
+  // archivedAt è null per i veicoli attivi; Boolean() gestisce anche un eventuale undefined.
   const archived = Boolean(vehicle.archivedAt);
 
   return (

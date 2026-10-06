@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { Button, Heading, Text } from '@/components/ui';
+import { isChunkLoadError, reloadOnceForChunkError } from '@/lib/chunkRecovery';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -26,6 +27,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Log per debugging; in prod un hook futuro potrà inviarlo a un servizio.
     console.error('ErrorBoundary caught an error:', error, info.componentStack);
+    // Rete di sicurezza: un chunk sparito dopo un deploy che non è passato da lazyNamed. La
+    // fallback resta visibile (e il pulsante ricarica) se il reload è già stato tentato.
+    if (isChunkLoadError(error)) reloadOnceForChunkError();
   }
 
   private reset = () => this.setState({ error: null });
@@ -45,7 +49,7 @@ function ErrorFallback({ onReset }: { onReset: () => void }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
       <div className="rounded-full bg-destructive/10 p-3">
-        <AlertTriangle className="size-7 text-destructive" />
+        <AlertTriangle className="size-7 text-destructive-text" />
       </div>
       <Heading level={2}>{t('error_page.crash.title')}</Heading>
       <Text variant="muted" className="max-w-md">

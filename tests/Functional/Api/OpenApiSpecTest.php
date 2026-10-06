@@ -69,6 +69,8 @@ final class OpenApiSpecTest extends ApiTestCase
             '/api/vehicles/{id}/share-candidates',
             '/api/vehicles/{id}/shares',
             '/api/vehicles/{id}/shares/{shareId}',
+            '/api/vehicles/{id}/transfer',
+            '/api/vehicles/{id}/transfer-candidates',
             '/api/vehicles/{id}/charts',
             '/api/maintenances',
             '/api/maintenances/{id}',
@@ -110,6 +112,17 @@ final class OpenApiSpecTest extends ApiTestCase
                 "Schema '$name' should be auto-generated via Model attribute",
             );
         }
+    }
+
+    public function testReminderUpdateSchemaDoesNotRequireAVehicleId(): void
+    {
+        $ref = $this->spec['paths']['/api/reminders/{id}']['put']['requestBody']['content']['application/json']['schema']['$ref'] ?? '';
+        $schema = $this->spec['components']['schemas'][basename($ref)] ?? null;
+        self::assertNotNull($schema, 'PUT /api/reminders/{id} should reference a request schema');
+        self::assertArrayNotHasKey('vehicleId', $schema['properties']);
+
+        $createRef = $this->spec['paths']['/api/reminders']['post']['requestBody']['content']['application/json']['schema']['$ref'] ?? '';
+        self::assertArrayHasKey('vehicleId', $this->spec['components']['schemas'][basename($createRef)]['properties']);
     }
 
     public function testHealthEndpointNoAuthRequired(): void

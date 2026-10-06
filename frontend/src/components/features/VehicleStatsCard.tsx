@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 import { FuelTypeBadge } from './FuelTypeBadge';
 import { FUEL_TYPES, type FuelType } from '@/api/types/vehicle';
 import type { VehicleStats } from '@/api/types/vehicleStats';
-import { formatCurrency, formatDecimal, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export interface VehicleStatsCardProps {
   stats: VehicleStats;
@@ -18,6 +18,7 @@ const isFuelType = (v: string): v is FuelType => (FUEL_TYPES as readonly string[
  */
 export function VehicleStatsCard({ stats }: VehicleStatsCardProps) {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const consumption = Object.entries(stats.consumption).filter(([fuel]) => isFuelType(fuel));
 
   return (
@@ -27,12 +28,12 @@ export function VehicleStatsCard({ stats }: VehicleStatsCardProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-          <Item label={t('vehicle.stats.km_driven')} value={formatKm(stats.kmDriven)} />
+          <Item label={t('vehicle.stats.km_driven')} value={fmt.km(stats.kmDriven)} />
           <Item
             label={t('vehicle.stats.cost_per_km')}
-            value={stats.costPerKm === null ? '—' : formatCurrency(stats.costPerKm)}
+            value={stats.costPerKm === null ? '—' : fmt.currency(stats.costPerKm)}
           />
-          <Item label={t('vehicle.stats.total_cost')} value={formatCurrency(stats.totals.cost)} />
+          <Item label={t('vehicle.stats.total_cost')} value={fmt.currency(stats.totals.cost)} />
           <Item label={t('vehicle.stats.refuelings')} value={stats.totals.refuelings} />
           <Item label={t('vehicle.stats.maintenances')} value={stats.totals.maintenances} />
           <Item label={t('vehicle.stats.expenses')} value={stats.totals.expenses} />
@@ -48,7 +49,7 @@ export function VehicleStatsCard({ stats }: VehicleStatsCardProps) {
                   {value === null ? (
                     <span className="text-muted-foreground">{t('vehicle.stats.consumption_unknown')}</span>
                   ) : (
-                    <span className="font-medium">{formatDecimal(value, 1)} km/l</span>
+                    <span className="font-medium">{fmt.decimal(value, 1)} km/l</span>
                   )}
                 </li>
               ))}

@@ -6,6 +6,7 @@ namespace App\Repository;
 
 use App\Entity\AuditLog;
 use App\Entity\Organization;
+use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -27,7 +28,11 @@ class AuditLogRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('a')
             ->where('a.organization = :org')
             ->setParameter('org', $org)
+            // `id` come spareggio: il timestamp ha la precisione del secondo e molte righe (un import, un
+            // flush con più entità) lo condividono; senza un ordine totale la paginazione a offset può
+            // ripetere o saltare righe tra una pagina e l'altra.
             ->orderBy('a.createdAt', 'DESC')
+            ->addOrderBy('a.id', 'DESC')
             ->setMaxResults($limit)
             ->setFirstResult($offset)
             ->getQuery()
@@ -35,17 +40,17 @@ class AuditLogRepository extends ServiceEntityRepository
     }
 
     /**
+     * Righe di audit generate dall'utente, dalla più vecchia (export GDPR).
+     *
      * @return list<AuditLog>
      */
-    public function findByEntity(string $entityClass, string $entityId, int $limit = 50): array
+    public function findByUser(User $user): array
     {
         return $this->createQueryBuilder('a')
-            ->where('a.entityClass = :cls')
-            ->andWhere('a.entityId = :id')
-            ->setParameter('cls', $entityClass)
-            ->setParameter('id', $entityId)
-            ->orderBy('a.createdAt', 'DESC')
-            ->setMaxResults($limit)
+            ->where('a.user = :user')
+            ->setParameter('user', $user)
+            ->orderBy('a.createdAt', 'ASC')
+            ->addOrderBy('a.id', 'ASC')
             ->getQuery()
             ->getResult();
     }

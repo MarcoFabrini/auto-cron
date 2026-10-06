@@ -6,6 +6,9 @@ namespace App\Repository;
 
 use App\Entity\Organization;
 use App\Entity\OrganizationInvitation;
+use App\Entity\OrganizationMember;
+use App\Entity\User;
+use App\Enum\OrgRole;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -19,10 +22,40 @@ class OrganizationInvitationRepository extends ServiceEntityRepository
         parent::__construct($registry, OrganizationInvitation::class);
     }
 
+    /**
+     * L'invito esiste, non è scaduto né usato e chi l'ha emesso può ancora invitare: se `invitedBy`
+     * non è più un membro accettato con ruolo owner/admin dell'org (rimosso, declassato) l'invito
+     * è come non esistesse. `invitedBy` nullo (utente cancellato) mantiene il comportamento storico.
+     */
     public function findValidByHash(string $tokenHash): ?OrganizationInvitation
     {
         $token = $this->findOneBy(['tokenHash' => $tokenHash]);
-        return $token?->isValid() ? $token : null;
+        if ($token === null || !$token->isValid()) {
+            return null;
+        }
+
+        return $this->inviterCanStillInvite($token) ? $token : null;
+    }
+
+    private function inviterCanStillInvite(OrganizationInvitation $invitation): bool
+    {
+        $inviter = $invitation->getInvitedBy();
+        if ($inviter === null) {
+            return true;
+        }
+
+        return (int) $this->getEntityManager()->createQueryBuilder()
+            ->select('COUNT(m.id)')
+            ->from(OrganizationMember::class, 'm')
+            ->where('m.organization = :org')
+            ->andWhere('m.user = :inviter')
+            ->andWhere('m.acceptedAt IS NOT NULL')
+            ->andWhere('m.role IN (:roles)')
+            ->setParameter('org', $invitation->getOrganization())
+            ->setParameter('inviter', $inviter)
+            ->setParameter('roles', [OrgRole::OWNER, OrgRole::ADMIN])
+            ->getQuery()
+            ->getSingleScalarResult() > 0;
     }
 
     /**
@@ -57,6 +90,24 @@ class OrganizationInvitationRepository extends ServiceEntityRepository
             ->setParameter('email', $email)
             ->getQuery()
             ->execute();
+    }
+
+    /**
+     * Elimina gli inviti non ancora accettati spediti da $inviter (in una sola org se indicata):
+     * un invito non deve sopravvivere a chi lo ha emesso. Restituisce quanti ne ha cancellati.
+     */
+    public function deletePendingByInviter(User $inviter, ?Organization $org = null): int
+    {
+        $qb = $this->createQueryBuilder('i')
+            ->delete()
+            ->where('i.invitedBy = :inviter')
+            ->andWhere('i.usedAt IS NULL')
+            ->setParameter('inviter', $inviter);
+        if ($org !== null) {
+            $qb->andWhere('i.organization = :org')->setParameter('org', $org);
+        }
+
+        return (int) $qb->getQuery()->execute();
     }
 
     public function deleteExpired(\DateTimeImmutable $olderThan): int

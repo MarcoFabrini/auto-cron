@@ -1,15 +1,14 @@
-import { useMemo } from 'react';
+import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ZodError } from 'zod';
-import { Alert, Heading, Skeleton, Text } from '@/components/ui';
-import { ConsumptionTrendChart } from './ConsumptionTrendChart';
-import { KmDrivenChart } from './KmDrivenChart';
-import { MonthlySpendingChart } from './MonthlySpendingChart';
-import { SpendingByCategoryChart } from './SpendingByCategoryChart';
+import { Alert, Heading, Text } from '@/components/ui';
+import { ChartsSkeleton } from './ChartsSkeleton';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import type { DashboardCharts } from '@/api/types/dashboardCharts';
-import { groupCategories, toConsumptionRows, toKmDrivenRows, toMonthlySpendingRows } from '@/lib/dashboardCharts';
-import { formatMonth, intlLocale } from '@/lib/format';
+import { lazyNamed } from '@/lib/lazyNamed';
+
+// recharts (~400 kB) si scarica solo quando una sezione grafici compare davvero.
+const ChartsGrid = lazyNamed(() => import('./ChartsGrid'), 'ChartsGrid');
 
 export interface ChartsSectionProps {
   /** Id dell'heading, unico nella pagina (la sezione ne è etichettata). */
@@ -24,25 +23,12 @@ export interface ChartsSectionProps {
 /**
  * Sezione con i quattro grafici (spese mensili, spese per categoria, km percorsi, consumo),
  * condivisa da dashboard e dettaglio veicolo. Solo presentazione: i dati arrivano dal chiamante,
- * che sceglie il perimetro (veicoli propri o singolo veicolo).
+ * che sceglie il perimetro (veicoli propri o singolo veicolo). Intestazione, errore e segnaposto
+ * sono leggeri; i grafici (`ChartsGrid`) arrivano in un chunk a parte mentre i dati si caricano.
  */
 export function ChartsSection({ headingId, title, subtitle, data, isLoading, error }: ChartsSectionProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const errorMessage = useApiErrorMessage();
-  const locale = intlLocale(i18n.language);
-
-  // Righe derivate dalla risposta, ricalcolate solo se cambiano i dati o la lingua.
-  const series = useMemo(() => {
-    if (!data) return null;
-    const label = (month: string) => formatMonth(month, locale);
-    return {
-      spending: toMonthlySpendingRows(data, label),
-      categories: groupCategories(data.spendingByCategory),
-      km: toKmDrivenRows(data, label),
-      consumption: toConsumptionRows(data, label),
-      fuelTypes: data.fuelTypes,
-    };
-  }, [data, locale]);
 
   return (
     <section aria-labelledby={headingId} className="space-y-3">
@@ -61,21 +47,11 @@ export function ChartsSection({ headingId, title, subtitle, data, isLoading, err
         </Alert>
       ) : null}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-72 w-full rounded-lg" />
-          ))}
-        </div>
-      ) : null}
-
-      {series ? (
-        <div className="grid grid-cols-1 gap-3 md:gap-4 lg:grid-cols-2">
-          <MonthlySpendingChart rows={series.spending} />
-          <SpendingByCategoryChart slices={series.categories} />
-          <KmDrivenChart rows={series.km} />
-          <ConsumptionTrendChart rows={series.consumption} fuelTypes={series.fuelTypes} />
-        </div>
+      {/* Senza dati e con un errore non c'è nulla da disegnare: il chunk non serve. */}
+      {data || !error ? (
+        <Suspense fallback={<ChartsSkeleton />}>
+          <ChartsGrid data={data} isLoading={isLoading} />
+        </Suspense>
       ) : null}
     </section>
   );

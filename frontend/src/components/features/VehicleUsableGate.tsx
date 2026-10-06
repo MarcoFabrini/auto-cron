@@ -10,21 +10,24 @@ export interface VehicleUsableGateProps {
 }
 
 /**
- * Guard per le pagine "nuovo record" (`?vehicleId=N`): il form si apre solo se il veicolo esiste, è
- * visibile all'utente, modificabile (non condiviso in sola lettura) e non è archiviato. Altrimenti
- * l'errore comparirebbe solo al submit (o mai).
+ * Guard per le pagine che scrivono su un veicolo, sia "nuovo record" (`?vehicleId=N`) sia
+ * "modifica record": il form si apre solo quando il veicolo è stato caricato ed è visibile
+ * all'utente, modificabile (non condiviso in sola lettura) e non archiviato. Finché non è noto
+ * (caricamento, query in pausa) c'è uno skeleton, e se la query fallisce (403/404) l'errore:
+ * un permesso ignoto non vale "modificabile", altrimenti il form lampeggia o resta a un
+ * utente in sola lettura e l'errore comparirebbe solo al submit (o mai).
  */
 export function VehicleUsableGate({ vehicleId, children }: VehicleUsableGateProps) {
   const { t } = useTranslation();
   const errorMessage = useApiErrorMessage();
   const { data, isLoading, error } = useVehicle(vehicleId);
 
-  if (isLoading) return <Skeleton className="h-48 w-full rounded-lg" />;
   if (error) return <Alert variant="error">{errorMessage(error)}</Alert>;
-  if (data && !data.permissions.canEdit) {
+  if (isLoading || !data) return <Skeleton className="h-48 w-full rounded-lg" />;
+  if (data.permissions.canEdit !== true) {
     return <Alert variant="warning">{t('vehicle.read_only_no_changes')}</Alert>;
   }
-  if (data?.archivedAt) return <Alert variant="warning">{t('vehicle.archived_no_new_records')}</Alert>;
+  if (data.archivedAt) return <Alert variant="warning">{t('vehicle.archived_no_new_records')}</Alert>;
 
   return <>{children}</>;
 }

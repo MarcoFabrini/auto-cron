@@ -8,6 +8,7 @@ import {
   CardContent,
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   Skeleton,
@@ -61,6 +62,8 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto overscroll-contain">
+        {/* Descrizione solo per gli screen reader (Radix la richiede): vale per tutti gli step, il titolo cambia. */}
+        <SheetDescription className="sr-only">{t('quick_add.description')}</SheetDescription>
         {isLoading ? (
           // Finché la lista non arriva non si sa se c'è qualcosa da scegliere: niente step veicolo.
           <>
@@ -86,6 +89,7 @@ export function QuickAddSheet({ open, onOpenChange }: QuickAddSheetProps) {
 
               {list.length > 0 && (
                 <VehiclePicker
+                  hideHeading
                   vehicles={list}
                   onSelect={(id) => {
                     setSelected(list.find((v) => v.id === id) ?? null);

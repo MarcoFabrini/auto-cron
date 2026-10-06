@@ -11,7 +11,16 @@
     "expenses": "Spese",
     "reminders": "Promemoria",
     "attachments": "Allegati",
-    "settings": "Impostazioni"
+    "settings": "Impostazioni",
+    "primary": "Navigazione principale",
+    "primary_mobile": "Navigazione principale mobile"
+  },
+  "org": {
+    "switch": {
+      "label": "Cambia organizzazione",
+      "trigger": "{{name}}, cambia organizzazione",
+      "current": "Organizzazione attiva"
+    }
   },
   "auth": {
     "login": {
@@ -76,6 +85,7 @@
       "success_description": "Ora fai parte dell'organizzazione.",
       "joined": "Ora fai parte di \"{{org}}\".",
       "error_title": "Invito non valido",
+      "retry": "Riprova",
       "invalid_title": "Link non valido",
       "invalid_description": "Il link di invito è mancante o non valido.",
       "continue": "Vai alla dashboard",
@@ -86,16 +96,19 @@
     "save": "Salva",
     "cancel": "Annulla",
     "delete": "Elimina",
+    "archive": "Archivia",
     "edit": "Modifica",
     "create": "Crea",
     "back": "Indietro",
     "confirm": "Conferma",
-    "loading": "Caricamento..."
+    "loading": "Caricamento...",
+    "close": "Chiudi"
   },
   "common": {
     "none": "Nessuno",
     "optional": "Opzionale",
-    "coming_soon": "In arrivo"
+    "coming_soon": "In arrivo",
+    "loading": "Caricamento in corso"
   },
   "dashboard": {
     "total_cost": "Spesa totale",
@@ -126,6 +139,13 @@
         "maintenance": "Manutenzione",
         "rest": "Altre categorie"
       },
+      "table": {
+        "month": "Mese",
+        "total": "Totale",
+        "category": "Categoria",
+        "amount": "Importo",
+        "no_value": "Nessun dato"
+      },
       "unit_km_per_liter": "km/l",
       "empty": {
         "spending": "Nessuna spesa nel periodo.",
@@ -139,6 +159,7 @@
   "quick_add": {
     "open": "Aggiungi",
     "choose_vehicle": "Scegli un veicolo",
+    "description": "Scegli un veicolo, poi cosa aggiungere.",
     "new_vehicle": "Nuovo veicolo"
   },
   "maintenance": {
@@ -256,13 +277,21 @@
       "invite_revoked": "Invito revocato.",
       "remove": "Rimuovi",
       "remove_title": "Rimuovere il membro?",
-      "remove_description": "{{email}} perderà l'accesso a questa organizzazione.",
+      "remove_description": "{{email}} perderà l'accesso a questa organizzazione. I veicoli di cui è proprietario passeranno a te: se devono andare a qualcun altro, trasferiscili prima.",
       "invite_title": "Invita un membro",
       "email": "Email",
       "role": "Ruolo",
       "invite_submit": "Invia invito",
       "invited": "Invito inviato.",
-      "removed": "Membro rimosso."
+      "removed": "Membro rimosso.",
+      "change_role": "Cambia il ruolo di {{name}}",
+      "role_confirm_title": "Cambiare il ruolo?",
+      "role_to_owner": "{{name}} diventerà proprietario dell'organizzazione, con il tuo stesso controllo completo: potrà anche declassare altri proprietari e amministratori.",
+      "role_owner_demoted": "{{name}} non sarà più proprietario e diventerà {{role}}: perderà la gestione dell'organizzazione. Gli inviti pendenti che ha inviato saranno eliminati.",
+      "role_self_demoted": "Non sarai più proprietario: diventerai {{role}} e perderai la gestione dell'organizzazione. Per tornare proprietario servirà un altro proprietario. I tuoi inviti pendenti saranno eliminati.",
+      "role_admin_to_member": "{{name}} non sarà più amministratore e vedrà solo i veicoli di cui è proprietario o condivisi con questa persona. Gli inviti pendenti che ha inviato saranno eliminati; i veicoli che possiede restano suoi.",
+      "role_member_to_admin": "{{name}} diventerà amministratore: potrà vedere, modificare, archiviare ed eliminare tutti i veicoli dell'organizzazione, gestire i membri e invitare altre persone.",
+      "role_updated": "Ruolo aggiornato."
     }
   },
   "reminder": {
@@ -330,6 +359,11 @@
     "amount": "Importo",
     "recurring": "Spesa ricorrente",
     "recurring_period": "Periodicità",
+    "recurring_first_charge_hint": "La data indicata sopra è quella del primo addebito.",
+    "recurring_until": "Fino al (facoltativo)",
+    "recurring_until_hint": "Lascia vuoto se la spesa continua finché non la disdici.",
+    "recurring_until_on": "fino al {{date}}",
+    "recurring_counted_note": "Questa spesa è conteggiata a ogni addebito già avvenuto, non una volta sola. Modificarla cambia tutti i suoi addebiti.",
     "notes": "Note",
     "select_vehicle": "Seleziona veicolo",
     "created": "Spesa registrata",
@@ -491,6 +525,21 @@
       "submit_many_one": "Condividi con {{count}} persona",
       "submit_many_other": "Condividi con {{count}} persone"
     },
+    "transfer": {
+      "button": "Trasferisci proprietà",
+      "section_description": "Cedi il veicolo a un altro membro dell'organizzazione: da quel momento totali, grafici e promemoria sono suoi.",
+      "title": "Trasferire la proprietà?",
+      "description": "Scegli il membro che diventerà il nuovo proprietario del veicolo.",
+      "recipient": "Nuovo proprietario",
+      "recipient_placeholder": "Scegli un membro",
+      "recipient_required": "Scegli il nuovo proprietario",
+      "no_candidates": "Nessun altro membro dell'organizzazione a cui cedere il veicolo: le persone entrano nell'organizzazione su invito (Impostazioni → Membri).",
+      "keep_access": "Mantieni l'accesso in sola lettura",
+      "keep_access_hint": "Se la togli, dopo il trasferimento non vedrai più questo veicolo (salvo che tu sia proprietario o amministratore dell'organizzazione).",
+      "warning": "Totali e grafici seguono il proprietario ATTUALE, quindi l'intero storico del veicolo passa al nuovo proprietario e smette di contare per te. Il nuovo proprietario riceverà una notifica e, al prossimo invio, anche quelle dei promemoria già in scadenza.",
+      "submit": "Trasferisci",
+      "success": "Proprietà trasferita"
+    },
     "stats": {
       "title": "Statistiche",
       "km_driven": "Km percorsi",
@@ -504,6 +553,12 @@
     },
     "archived_no_new_records": "Questo veicolo è archiviato: non si possono aggiungere nuovi record. Ripristinalo per continuare.",
     "archived_banner": "Questo veicolo è archiviato.",
+    "archive": {
+      "title": "Archiviare il veicolo?",
+      "description": "Il veicolo scompare da elenchi, dashboard e notifiche, ma i dati restano salvati e potrai ripristinarlo quando vuoi.",
+      "done": "Veicolo archiviato"
+    },
+    "archived_section": "Veicoli archiviati",
     "restore": "Ripristina",
     "restored": "Veicolo ripristinato",
     "shared_read_only": "Condiviso · sola lettura",
@@ -562,7 +617,9 @@
       "not_configured": "Notifiche push non configurate: genera prima le chiavi VAPID e abilitale",
       "no_subscription": "Nessun device sottoscritto: attiva prima le notifiche su questo browser",
       "no_keys": "Genera prima una coppia VAPID prima di abilitare le notifiche",
-      "endpoint_not_allowed": "Servizio di notifica non supportato"
+      "endpoint_not_allowed": "Servizio di notifica non supportato",
+      "not_found": "Dispositivo non trovato",
+      "web_fields_required": "Dati di sottoscrizione incompleti: riattiva le notifiche su questo browser"
     },
     "settings": {
       "instance_admin_required": "Solo l'amministratore dell'istanza (il primo utente registrato) può modificare queste impostazioni"
@@ -575,7 +632,16 @@
       "invalid_current_password": "La password attuale non è corretta",
       "invalid_reset_token": "Il link di reset è scaduto o non valido",
       "registration_closed": "La registrazione libera è chiusa su questa istanza: chiedi un invito a chi la amministra",
-      "try_again": "Il server è occupato, riprova tra un istante."
+      "try_again": "Il server è occupato, riprova tra un istante.",
+      "invalid_refresh_token": "Sessione scaduta, accedi di nuovo",
+      "invalid_verification_token": "Il link di verifica è scaduto o non valido",
+      "no_avatar": "Nessuna foto profilo da rimuovere",
+      "not_authenticated": "Accedi per continuare",
+      "not_member": "Non fai parte di questa organizzazione",
+      "refresh_token_required": "Sessione scaduta, accedi di nuovo",
+      "no_active_organization": "Nessuna organizzazione attiva: accedi di nuovo o scegline una",
+      "organization_not_found": "Organizzazione non trovata",
+      "not_member_of_organization": "Non fai più parte di questa organizzazione: accedi di nuovo"
     },
     "access": {
       "org_admin_required": "Solo gli amministratori dell'organizzazione possono fare questa operazione."
@@ -606,9 +672,14 @@
       "recurring_period": {
         "required": "Seleziona la periodicità"
       },
+      "recurring_until": {
+        "before_start": "La data di fine non può precedere la data della spesa"
+      },
       "not_found": "Spesa non trovata",
       "recurring_period_required": "Scegli la frequenza della spesa ricorrente",
-      "recurring_period_unexpected": "La frequenza vale solo per le spese ricorrenti"
+      "recurring_period_unexpected": "La frequenza vale solo per le spese ricorrenti",
+      "recurring_until_before_start": "La data di fine non può precedere il primo addebito",
+      "recurring_until_unexpected": "La data di fine vale solo per le spese ricorrenti"
     },
     "reminder": {
       "vehicle": {
@@ -668,21 +739,26 @@
         "required": "Inserisci i km iniziali"
       },
       "duplicate_fuel_type": "Il carburante secondario deve essere diverso dal primario",
-      "not_found": "Veicolo non trovato"
+      "fuel_type_in_use": "Ci sono rifornimenti con questo carburante: modificali o eliminali prima",
+      "not_found": "Veicolo non trovato",
+      "limit_reached": "Hai raggiunto il numero massimo di veicoli consentito per questa organizzazione"
     },
     "upload": {
       "file_required": "Seleziona un file",
       "invalid_file": "File non valido",
       "file_too_large": "File troppo grande (max 10 MB)",
       "mime_not_allowed": "Formato non supportato (solo JPG, PNG, WebP, PDF)",
-      "entity_required": "Riferimento mancante"
+      "entity_required": "Riferimento mancante",
+      "too_many_files": "Troppi allegati su questo elemento (massimo 20)",
+      "quota_exceeded": "Spazio allegati dell'organizzazione esaurito: elimina dei file per caricarne altri"
     },
     "attachment": {
       "not_found": "Allegato non trovato",
       "file_missing": "File non disponibile"
     },
     "query": {
-      "entity_required": "Parametri mancanti"
+      "entity_required": "Parametri mancanti",
+      "vehicle_id_required": "Scegli prima un veicolo"
     },
     "entity": {
       "not_found": "Risorsa non trovata"
@@ -691,7 +767,10 @@
       "401": "Non autorizzato",
       "403": "Accesso negato",
       "404": "Risorsa non trovata",
-      "500": "Errore server"
+      "500": "Errore server",
+      "400": "Richiesta non valida",
+      "405": "Operazione non consentita",
+      "429": "Troppe richieste: riprova tra qualche istante"
     },
     "validation_failed": "Controlla i dati inseriti: il server non li ha accettati.",
     "unknown": "Errore inatteso",
@@ -713,6 +792,7 @@
         "required": "Conferma la password"
       },
       "password": {
+        "required": "Inserisci la password",
         "min": "Minimo 8 caratteri",
         "mismatch": "Le password non coincidono"
       },
@@ -725,11 +805,24 @@
       "cannot_remove_owner": "Il proprietario del veicolo non può essere rimosso.",
       "not_found": "Condivisione non trovata."
     },
+    "transfer": {
+      "recipient_invalid": "Seleziona un membro valido dell'organizzazione.",
+      "same_owner": "Questo membro è già il proprietario del veicolo.",
+      "ownership_changed": "La proprietà del veicolo è cambiata nel frattempo: ricarica la pagina e riprova."
+    },
     "network": {
       "unavailable": "Server non raggiungibile"
     },
     "member": {
-      "owner_role_forbidden": "Solo un proprietario può assegnare il ruolo di proprietario"
+      "owner_role_forbidden": "Solo un proprietario può assegnare il ruolo di proprietario",
+      "already_exists": "Questa persona fa già parte dell'organizzazione",
+      "cannot_remove_owner": "Il proprietario dell'organizzazione non può essere rimosso: declassalo prima",
+      "cannot_change_owner_role": "Un amministratore non può modificare il ruolo di un proprietario",
+      "cannot_change_admin_role": "Solo un proprietario può modificare il ruolo di un amministratore",
+      "cannot_change_own_role": "Non puoi cambiare il tuo ruolo",
+      "last_owner": "L'organizzazione deve avere almeno un proprietario: promuovi prima un altro membro",
+      "not_found": "Membro non trovato",
+      "invite_rate_limited": "Troppi inviti inviati: riprova più tardi"
     },
     "validation": {
       "decimal_format": "Numero non valido (es. 12,50)",
@@ -738,7 +831,15 @@
       "price_format": "Prezzo non valido (max 2 cifre intere e 4 decimali)"
     },
     "org": {
-      "slug_format": "Il nome non può essere usato per l'indirizzo dell'organizzazione"
+      "slug_format": "Il nome non può essere usato per l'indirizzo dell'organizzazione",
+      "not_found": "Organizzazione non trovata",
+      "slug_taken": "Questo indirizzo è già usato da un'altra organizzazione",
+      "create_forbidden": "Solo l'amministratore dell'istanza (il primo utente registrato) può creare nuove organizzazioni"
+    },
+    "invitation": {
+      "invalid": "L'invito è scaduto o non valido",
+      "not_for_you": "Questo invito è per un altro indirizzo email",
+      "not_found": "Invito non trovato"
     }
   },
   "account": {
@@ -780,5 +881,16 @@
       "description": "Non riesco a contattare il server. La tua sessione è ancora valida: controlla la connessione e riprova.",
       "retry": "Riprova"
     }
+  },
+  "pull_to_refresh": {
+    "pull": "Trascina per aggiornare",
+    "release": "Rilascia per aggiornare",
+    "refreshing": "Aggiornamento in corso"
+  },
+  "update_prompt": {
+    "title": "Nuova versione disponibile",
+    "description": "Aggiorna per usare l'ultima versione dell'app.",
+    "action": "Aggiorna",
+    "action_alt": "Aggiorna l'app alla nuova versione"
   }
 }

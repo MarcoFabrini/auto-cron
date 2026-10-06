@@ -44,7 +44,7 @@ const SW_READY_TIMEOUT_MS = 10_000;
  * non si risolve MAI se nessun SW è registrato, quindi un errore reale (contesto
  * non sicuro, certificato non fidato, sw.js irraggiungibile) resterebbe muto fino
  * al timeout e verrebbe scambiato per "browser non supportato". Se la
- * registrazione manca (registerSW.js parte al `load`, può non essere ancora
+ * registrazione manca (lib/pwaUpdate la registra al `load`, può non essere ancora
  * successo o essere fallito) la si tenta qui: l'eccezione vera arriva al chiamante.
  * '/sw.js' è l'output di vite-plugin-pwa (strategia injectManifest, sw.ts).
  */

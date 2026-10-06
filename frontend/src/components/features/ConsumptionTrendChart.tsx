@@ -11,7 +11,8 @@ import {
   chartColor,
 } from './chartTheme';
 import { hasConsumption, type ConsumptionRow } from '@/lib/dashboardCharts';
-import { formatDecimal } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion';
 
 export interface ConsumptionTrendChartProps {
   rows: ConsumptionRow[];
@@ -25,13 +26,27 @@ export interface ConsumptionTrendChartProps {
  */
 export function ConsumptionTrendChart({ rows, fuelTypes }: ConsumptionTrendChartProps) {
   const { t } = useTranslation();
+  const fmt = useFormat();
+  const reducedMotion = usePrefersReducedMotion();
   const unit = t('dashboard.charts.unit_km_per_liter');
+  const fuelName = (fuel: string) => t(`vehicle.fuel.${fuel}`, { defaultValue: fuel });
+  const noValue = t('dashboard.charts.table.no_value');
 
   return (
     <ChartCard
       title={`${t('dashboard.charts.consumption')} (${unit})`}
       emptyMessage={t('dashboard.charts.empty.consumption')}
       isEmpty={!hasConsumption(rows)}
+      table={{
+        columns: [t('dashboard.charts.table.month'), ...fuelTypes.map(fuelName)],
+        rows: rows.map((row) => [
+          row.label,
+          ...fuelTypes.map((fuel) => {
+            const value = row.values[fuel];
+            return value == null ? noValue : fmt.decimal(value, 2);
+          }),
+        ]),
+      }}
     >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
@@ -43,12 +58,12 @@ export function ConsumptionTrendChart({ rows, fuelTypes }: ConsumptionTrendChart
             tickLine={false}
             width={40}
             domain={['auto', 'auto']}
-            tickFormatter={(v: number) => formatDecimal(v, 1)}
+            tickFormatter={(v: number) => fmt.decimal(v, 1)}
           />
           <Tooltip
             contentStyle={TOOLTIP_CONTENT_STYLE}
             labelStyle={TOOLTIP_LABEL_STYLE}
-            formatter={(value) => (value == null ? '—' : `${formatDecimal(Number(value), 2)} ${unit}`)}
+            formatter={(value) => (value == null ? '—' : `${fmt.decimal(Number(value), 2)} ${unit}`)}
           />
           <Legend wrapperStyle={LEGEND_STYLE} iconSize={10} />
           {fuelTypes.map((fuel, i) => (
@@ -56,11 +71,12 @@ export function ConsumptionTrendChart({ rows, fuelTypes }: ConsumptionTrendChart
               key={fuel}
               type="monotone"
               dataKey={(row: ConsumptionRow) => row.values[fuel]}
-              name={t(`vehicle.fuel.${fuel}`, { defaultValue: fuel })}
+              name={fuelName(fuel)}
               stroke={chartColor(i)}
               strokeWidth={2}
               dot={{ r: 3, fill: chartColor(i) }}
               connectNulls
+              isAnimationActive={!reducedMotion}
             />
           ))}
         </LineChart>

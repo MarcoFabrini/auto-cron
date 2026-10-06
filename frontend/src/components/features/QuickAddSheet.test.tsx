@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -114,5 +114,36 @@ describe('QuickAddSheet', () => {
     expect(await screen.findByText('Panda')).toBeInTheDocument();
     expect(screen.getByText('Ducati')).toBeInTheDocument();
     expect(screen.queryByText('Altrui')).not.toBeInTheDocument();
+  });
+
+  it('nella scelta del veicolo il titolo "Scegli un veicolo" compare una volta sola', async () => {
+    mockedAuthFetch.mockResolvedValue([vehicle(4, 'Panda'), vehicle(5, 'Ducati')]);
+    renderSheet();
+
+    await screen.findByText('Panda');
+
+    expect(screen.getAllByText('Scegli un veicolo')).toHaveLength(1);
+    // l'unico titolo è quello accessibile del foglio
+    expect(screen.getByRole('dialog', { name: 'Scegli un veicolo' })).toBeInTheDocument();
+  });
+
+  describe('accessibilità Radix', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it.each([
+      ['scelta del veicolo', [vehicle(4, 'Panda'), vehicle(5, 'Ducati')]],
+      ['cosa aggiungere', [vehicle(4, 'Panda')]],
+    ])('apre il foglio (%s) con una descrizione e senza warning', async (_step, vehicles) => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockedAuthFetch.mockResolvedValue(vehicles);
+      renderSheet();
+
+      await screen.findByText('Panda');
+
+      expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Scegli un veicolo, poi cosa aggiungere.');
+      const logged = [...error.mock.calls, ...warn.mock.calls].flat().map(String);
+      expect(logged.filter((m) => /Description|aria-describedby/.test(m))).toEqual([]);
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   daysUntil,
   formatMonth,
   intlLocale,
+  profileLocale,
 } from './format';
 
 describe('formatKm', () => {
@@ -17,6 +18,39 @@ describe('formatKm', () => {
   });
   it('arrotonda i decimali via', () => {
     expect(formatKm(0)).toBe('0 km');
+  });
+  it('con locale en-GB usa la virgola per le migliaia', () => {
+    expect(formatKm(12345.6, 'en-GB')).toBe('12,346 km');
+    expect(formatKm(12345.6, 'it-IT')).toBe('12.346 km');
+  });
+});
+
+describe('formatDecimal', () => {
+  it('di default è it-IT con un decimale', () => {
+    expect(formatDecimal(12345.67)).toBe('12.345,7');
+  });
+  it('it-IT e en-GB differiscono per separatori (12345.6)', () => {
+    expect(formatDecimal(12345.6, 1, 'it-IT')).toBe('12.345,6');
+    expect(formatDecimal(12345.6, 1, 'en-GB')).toBe('12,345.6');
+  });
+  it('rispetta i decimali massimi richiesti', () => {
+    expect(formatDecimal(8.456, 2, 'en-GB')).toBe('8.46');
+    expect(formatDecimal(8.456, 0, 'en-GB')).toBe('8');
+  });
+  it('null, undefined e NaN danno "—"', () => {
+    expect(formatDecimal(null, 1, 'en-GB')).toBe('—');
+    expect(formatDecimal(undefined)).toBe('—');
+    expect(formatDecimal(Number.NaN)).toBe('—');
+  });
+  it('la cache dei formattatori non mescola locale né opzioni, in qualunque ordine', () => {
+    const results = [
+      formatDecimal(1234.5, 1, 'it-IT'),
+      formatDecimal(1234.5, 1, 'en-GB'),
+      formatDecimal(1234.5, 0, 'en-GB'),
+      formatDecimal(1234.5, 1, 'it-IT'),
+      formatDecimal(1234.5, 1, 'en-GB'),
+    ];
+    expect(results).toEqual(['1234,5', '1,234.5', '1,235', '1234,5', '1,234.5']);
   });
 });
 
@@ -40,6 +74,9 @@ describe('formatCurrency', () => {
   });
   it('formatta i number', () => {
     expect(formatCurrency(0)).toContain('0,00');
+  });
+  it('con locale en-GB: punto decimale, virgola per le migliaia, ancora EUR', () => {
+    expect(formatCurrency(12345.5, 'en-GB')).toBe('€12,345.50');
   });
 });
 
@@ -72,6 +109,10 @@ describe('formatDate', () => {
 describe('formatBytes', () => {
   it('byte sotto 1024 restano in B', () => {
     expect(formatBytes(512)).toBe('512 B');
+  });
+  it('i decimali seguono il locale', () => {
+    expect(formatBytes(1536, 'it-IT')).toBe('1,5 KB');
+    expect(formatBytes(1536, 'en-GB')).toBe('1.5 KB');
   });
   it('scala a KB/MB', () => {
     expect(formatBytes(2048)).toBe('2 KB');
@@ -153,5 +194,14 @@ describe('intlLocale', () => {
     expect(intlLocale('en-US')).toBe('en-GB');
     expect(intlLocale('it')).toBe('it-IT');
     expect(intlLocale('fr')).toBe('it-IT');
+  });
+});
+
+describe('profileLocale', () => {
+  it("inglese (anche en-US) → 'en', tutto il resto → 'it'", () => {
+    expect(profileLocale('en')).toBe('en');
+    expect(profileLocale('en-US')).toBe('en');
+    expect(profileLocale('it')).toBe('it');
+    expect(profileLocale('fr')).toBe('it');
   });
 });

@@ -22,3 +22,9 @@ scripts/
 .phpunit.cache/
 *.md
 !README.md
+config/jwt/
+.env.local
+.env.local.php
+.env.*.local
+public/bundles/
+screenshots/

@@ -34,6 +34,7 @@ export interface ExpenseResponse {
   amount: string;              // decimal string
   recurring: boolean;
   recurringPeriod: RecurringPeriod | null;
+  recurringUntil?: string | null; // ISO datetime, ultimo addebito possibile (inclusivo); null/assente = in corso
   notes?: string | null;
 }
 
@@ -46,6 +47,7 @@ export interface Expense {
   amount: string;
   recurring: boolean;
   recurringPeriod: RecurringPeriod | null;
+  recurringUntil: string | null; // YYYY-MM-DD, ultimo addebito possibile (inclusivo); null = in corso
   notes: string | null;
 }
 
@@ -57,6 +59,7 @@ export interface CreateExpenseDto {
   amount: string;
   recurring: boolean;
   recurringPeriod?: RecurringPeriod | null;
+  recurringUntil?: string | null;
   notes?: string | null;
 }
 
@@ -72,6 +75,7 @@ export function adaptExpense(raw: ExpenseResponse): Expense {
     amount: raw.amount,
     recurring: raw.recurring,
     recurringPeriod: raw.recurringPeriod,
+    recurringUntil: raw.recurringUntil ? raw.recurringUntil.slice(0, 10) : null,
     notes: raw.notes ?? null,
   };
 }

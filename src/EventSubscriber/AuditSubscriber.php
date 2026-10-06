@@ -16,6 +16,7 @@ use App\Entity\Vehicle;
 use App\Entity\VehicleShare;
 use App\Enum\AuditAction;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Events;
@@ -34,9 +35,15 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * Organization.
  *
  * Esclude PII updates su User (gestito via GDPR), token auth, push subs.
+ *
+ * Lo stato raccolto vale per UN flush: se il flush fallisce (es. violazione di un indice unico) il
+ * postFlush non arriva, e in un processo longevo (worker Messenger, FrankenPHP) le righe rimaste
+ * finirebbero nel flush riuscito successivo, con utente e IP sbagliati. Per questo ogni onFlush
+ * riparte da zero e anche onClear (reset dell'EntityManager) lo svuota.
  */
 #[AsDoctrineListener(event: Events::onFlush)]
 #[AsDoctrineListener(event: Events::postFlush)]
+#[AsDoctrineListener(event: Events::onClear)]
 final class AuditSubscriber
 {
     /**
@@ -80,8 +87,16 @@ final class AuditSubscriber
     ) {
     }
 
+    public function onClear(OnClearEventArgs $args): void
+    {
+        $this->reset();
+    }
+
     public function onFlush(OnFlushEventArgs $args): void
     {
+        // Un nuovo flush è una nuova raccolta: scarta gli avanzi di un flush precedente andato in errore.
+        $this->reset();
+
         $em = $args->getObjectManager();
         $uow = $em->getUnitOfWork();
 
@@ -186,6 +201,12 @@ final class AuditSubscriber
         $this->deletedOrgIds = [];
     }
 
+    private function reset(): void
+    {
+        $this->pending = [];
+        $this->deletedOrgIds = [];
+    }
+
     private function isTracked(object $entity): bool
     {
         foreach (self::TRACKED as $cls) {
@@ -222,6 +243,11 @@ final class AuditSubscriber
         }
         if ($entity instanceof Organization) {
             return $entity;
+        }
+        // Lo share non ha un'organizzazione propria: è quella del suo veicolo (altrimenti la riga
+        // di audit avrebbe organization_id NULL e non comparirebbe mai in GET /api/audit-logs).
+        if ($entity instanceof VehicleShare) {
+            return $entity->getVehicle()->getOrganization();
         }
         return null;
     }

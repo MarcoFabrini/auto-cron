@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Service;
 
+use App\Entity\Organization;
+use App\Entity\OrganizationMember;
 use App\Entity\Reminder;
 use App\Entity\User;
 use App\Entity\Vehicle;
+use App\Enum\OrgRole;
 use App\Enum\ReminderUrgency;
 use App\Service\MailBuilder;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -92,5 +95,91 @@ final class MailBuilderTest extends KernelTestCase
 
         self::assertStringContainsString('scadenza 15/10/2026 · a 100.000 km', $text);
         self::assertStringNotContainsString('attuali', $text, 'senza km attuali noti non si inventa nulla');
+    }
+
+    private function roleChange(string $locale, OrgRole $role): \Symfony\Component\Mime\Email
+    {
+        $member = (new OrganizationMember())
+            ->setOrganization((new Organization())->setName('Officina Rossi'))
+            ->setUser($this->user($locale))
+            ->setRole($role);
+        $actor = (new User())->setEmail('a@test.it')->setFirstName('Anna')->setLastName('Bianchi');
+
+        return $this->mailBuilder()->roleChanged($member, $actor);
+    }
+
+    public function testRoleChangedItalianNamesOrganizationActorAndRole(): void
+    {
+        $email = $this->roleChange('it', OrgRole::ADMIN);
+
+        self::assertSame('AutoCron — Il tuo ruolo in Officina Rossi è cambiato', $email->getSubject());
+        $text = (string) $email->getTextBody();
+        self::assertStringContainsString('Ciao Mario,', $text);
+        self::assertStringContainsString('Anna Bianchi ha cambiato il tuo ruolo nell\'organizzazione "Officina Rossi": ora sei Amministratore.', $text);
+        self::assertStringContainsString('Apri AutoCron', (string) $email->getHtmlBody());
+    }
+
+    public function testRoleChangedEnglishNamesOrganizationActorAndRole(): void
+    {
+        $email = $this->roleChange('en', OrgRole::MEMBER);
+
+        self::assertSame('AutoCron — Your role in Officina Rossi has changed', $email->getSubject());
+        $text = (string) $email->getTextBody();
+        self::assertStringContainsString('Hi Mario,', $text);
+        self::assertStringContainsString('Anna Bianchi changed your role in the organization "Officina Rossi": you are now Member.', $text);
+        self::assertStringContainsString('Open AutoCron', (string) $email->getHtmlBody());
+    }
+
+    private function transferVehicle(): Vehicle
+    {
+        return (new Vehicle())->setOrganization((new Organization())->setName('Officina Rossi'))->setName('Panda');
+    }
+
+    private function person(string $first, string $last, string $locale = 'it'): User
+    {
+        $user = (new User())->setEmail($first.'@test.it')->setFirstName($first)->setLastName($last)->setLocale($locale);
+        // Serve un id per distinguere "chi ha agito" dal destinatario (le entity qui non sono persistite)
+        (new \ReflectionProperty(User::class, 'id'))->setValue($user, crc32($first));
+
+        return $user;
+    }
+
+    public function testVehicleReceivedItalianNamesVehicleActorAndPreviousOwner(): void
+    {
+        $email = $this->mailBuilder()->vehicleReceived($this->person('Luca', 'Verdi'), $this->transferVehicle(), $this->person('Anna', 'Bianchi'), $this->person('Mario', 'Rossi'));
+
+        self::assertSame('AutoCron — Panda ora è tuo', $email->getSubject());
+        $text = (string) $email->getTextBody();
+        self::assertStringContainsString('Ciao Luca,', $text);
+        self::assertStringContainsString('Anna Bianchi ti ha trasferito la proprietà del veicolo "Panda" nell\'organizzazione "Officina Rossi".', $text);
+        self::assertStringContainsString('Precedente proprietario: Mario Rossi.', $text);
+        self::assertStringContainsString('Promemoria, totali e grafici di questo veicolo, storico incluso, ora sono tuoi.', $text);
+        self::assertStringContainsString('/vehicles/', $text);
+    }
+
+    public function testVehicleReceivedEnglishWhenTheActorTakesItForThemselves(): void
+    {
+        $actor = $this->person('Luca', 'Verdi', 'en');
+        $email = $this->mailBuilder()->vehicleReceived($actor, $this->transferVehicle(), $actor, null);
+
+        self::assertSame('AutoCron — Panda is now yours', $email->getSubject());
+        $text = (string) $email->getTextBody();
+        self::assertStringContainsString('You took over the ownership of the vehicle "Panda"', $text);
+        self::assertStringNotContainsString('Previous owner', $text, 'Veicolo orfano: nessun precedente proprietario');
+        self::assertStringContainsString('Reminders, totals and charts of this vehicle, history included, are now yours.', $text);
+    }
+
+    public function testVehicleHandedOverStatesWhetherReadOnlyAccessIsKept(): void
+    {
+        $builder = $this->mailBuilder();
+        $kept = $builder->vehicleHandedOver($this->person('Mario', 'Rossi'), $this->transferVehicle(), $this->person('Luca', 'Verdi'), $this->person('Anna', 'Bianchi'), true);
+        $lost = $builder->vehicleHandedOver($this->person('Mario', 'Rossi', 'en'), $this->transferVehicle(), $this->person('Luca', 'Verdi'), $this->person('Anna', 'Bianchi'), false);
+
+        self::assertSame('AutoCron — Panda ha un nuovo proprietario', $kept->getSubject());
+        self::assertStringContainsString('Anna Bianchi ha trasferito la proprietà del veicolo "Panda" nell\'organizzazione "Officina Rossi" a Luca Verdi.', (string) $kept->getTextBody());
+        self::assertStringContainsString('Mantieni l\'accesso al veicolo in sola lettura.', (string) $kept->getTextBody());
+        self::assertSame('AutoCron — Panda has a new owner', $lost->getSubject());
+        self::assertStringContainsString('You no longer have direct access to the vehicle.', (string) $lost->getTextBody());
+        self::assertStringNotContainsString('read-only', (string) $lost->getTextBody());
     }
 }

@@ -102,4 +102,14 @@ describe('DashboardPage — grafici', () => {
     expect(await screen.findByText('Spese mensili')).toBeInTheDocument();
     expect(mockedAuthFetch).toHaveBeenCalledWith(CHARTS_URL);
   });
+
+  it('ha esattamente un h1 (sr-only, con il nome della pagina)', async () => {
+    mockApi([vehicle(1, 'owned')]);
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'Andamento' });
+    const h1 = screen.getAllByRole('heading', { level: 1 });
+    expect(h1).toHaveLength(1);
+    expect(h1[0]).toHaveTextContent('Dashboard');
+  });
 });

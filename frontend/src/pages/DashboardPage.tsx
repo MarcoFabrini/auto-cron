@@ -2,18 +2,22 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Car, ChevronRight, Euro, Fuel, Wrench } from 'lucide-react';
 import { Alert, Card, CardContent, Skeleton } from '@/components/ui';
+import { PageHeader } from '@/components/layout';
 import { DashboardCharts, StatCard, UpcomingRemindersCard } from '@/components/features';
 import { useDashboard } from '@/hooks/useDashboard';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
-import { formatCurrency } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export function DashboardPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const errorMessage = useApiErrorMessage();
   const dash = useDashboard();
 
   return (
     <div className="space-y-6">
+      <PageHeader srTitle={t('nav.dashboard')} />
+
       {dash.error ? <Alert variant="error">{errorMessage(dash.error)}</Alert> : null}
       {!dash.error && dash.partial ? <Alert variant="warning">{t('dashboard.partial_totals')}</Alert> : null}
 
@@ -27,7 +31,7 @@ export function DashboardPage() {
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <StatCard Icon={Car} label={t('dashboard.your_vehicles')} value={dash.vehicles.length} />
-          <StatCard Icon={Euro} label={t('dashboard.total_cost')} value={formatCurrency(dash.totalCost)} />
+          <StatCard Icon={Euro} label={t('dashboard.total_cost')} value={fmt.currency(dash.totalCost)} />
           <StatCard Icon={Fuel} label={t('nav.refueling')} value={dash.totalRefuelings} />
           <StatCard Icon={Wrench} label={t('nav.maintenance')} value={dash.totalMaintenances} />
         </div>
@@ -56,7 +60,7 @@ export function DashboardPage() {
               <Car className="size-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-base font-semibold">{t('dashboard.your_vehicles')}</h3>
+              <h2 className="text-base font-semibold">{t('dashboard.your_vehicles')}</h2>
               {!dash.isLoading && (
                 <p className="text-sm text-muted-foreground">
                   {t('dashboard.vehicle_count', { count: dash.vehicles.length })}

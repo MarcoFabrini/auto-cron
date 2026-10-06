@@ -6,19 +6,26 @@ namespace App\Controller\Api;
 
 use App\Dto\Request\VehicleRequest;
 use App\Dto\Request\VehicleShareRequest;
+use App\Dto\Request\VehicleTransferRequest;
 use App\Entity\User;
 use App\Entity\Vehicle;
 use App\Entity\VehicleShare;
+use App\Enum\FuelType;
 use App\Enum\ShareRole;
 use App\Repository\OrganizationMemberRepository;
+use App\Repository\RefuelingRepository;
 use App\Repository\VehicleRepository;
 use App\Repository\VehicleShareRepository;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
 use App\Service\AttachmentCleaner;
 use App\Service\DashboardChartsService;
+use App\Service\MemberNotifier;
 use App\Service\VehicleAccessChecker;
+use App\Service\VehicleOwnershipTransfer;
+use App\Service\VehicleQuota;
 use App\Service\VehicleStatsService;
+use App\Service\VehicleTransferException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -43,6 +50,7 @@ final class VehicleController extends AbstractController
         private readonly EntityManagerInterface $em,
         private readonly VehicleRepository $vehicleRepo,
         private readonly VehicleShareRepository $shareRepo,
+        private readonly RefuelingRepository $refuelingRepo,
         private readonly OrganizationMemberRepository $memberRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
         private readonly VehicleAccessChecker $access,
@@ -52,12 +60,18 @@ final class VehicleController extends AbstractController
         private readonly VehicleStatsService $stats,
         private readonly AttachmentCleaner $attachmentCleaner,
         private readonly DashboardChartsService $charts,
+        private readonly VehicleQuota $quota,
+        private readonly VehicleOwnershipTransfer $ownershipTransfer,
+        private readonly MemberNotifier $notifier,
     ) {
     }
 
     #[OA\Get(
         summary: 'List accessible vehicles in active organization',
-        description: 'Org admin/owner sees all. Plain member sees only vehicles with explicit VehicleShare. Excludes archived. Each item carries `ownership` (owned = the caller owns it; shared = read-only share; organization = visible through the org owner/admin role) and the caller\'s `permissions`. Dashboard totals, charts, upcoming reminders and notifications only cover `owned` vehicles.',
+        description: 'Org admin/owner sees all. Plain member sees only vehicles with explicit VehicleShare. Excludes archived unless `?archived=1`, which returns ONLY the archived ones the caller can access (same access rules). Each item carries `ownership` (owned = the caller owns it; shared = read-only share; organization = visible through the org owner/admin role) and the caller\'s `permissions`. Dashboard totals, charts, upcoming reminders and notifications only cover `owned` vehicles.',
+        parameters: [
+            new OA\Parameter(name: 'archived', in: 'query', required: false, description: '1 = only archived vehicles (default: only active ones)', schema: new OA\Schema(type: 'boolean', default: false)),
+        ],
         responses: [
             new OA\Response(
                 response: 200,
@@ -67,7 +81,7 @@ final class VehicleController extends AbstractController
         ],
     )]
     #[Route('', name: 'list', methods: ['GET'])]
-    public function list(): JsonResponse
+    public function list(Request $request): JsonResponse
     {
         /** @var User $user */
         $user = $this->getUser();
@@ -77,7 +91,7 @@ final class VehicleController extends AbstractController
         $vehicles = $this->vehicleRepo->findAccessibleByUserInOrganization(
             $user,
             $org,
-            includeArchived: false,
+            archivedOnly: $request->query->getBoolean('archived'),
             isOrgAdmin: $isOrgAdmin,
         );
         // Una query per tutte le condivisioni dell'utente, non due per veicolo.
@@ -114,11 +128,11 @@ final class VehicleController extends AbstractController
 
     #[OA\Post(
         summary: 'Create vehicle in active organization',
-        description: 'Any accepted org member. The creator becomes the vehicle owner (admin share), org owner/admin included: dashboard totals and notifications only cover owned vehicles. Bi-fuel via secondaryFuelType (must differ from fuelType).',
+        description: 'Any accepted org member. The creator becomes the vehicle owner (admin share), org owner/admin included: dashboard totals and notifications only cover owned vehicles. Bi-fuel via secondaryFuelType (must differ from fuelType). When the instance sets VEHICLES_ORG_LIMIT (default 0 = no limit), an organization that already has that many vehicles, archived ones included, gets vehicle.limit_reached.',
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: VehicleRequest::class))),
         responses: [
             new OA\Response(response: 201, description: 'Created', content: new OA\JsonContent(ref: new Model(type: Vehicle::class, groups: ['vehicle:read']))),
-            new OA\Response(response: 422, description: 'validation_failed (e.g. vehicle.duplicate_fuel_type)'),
+            new OA\Response(response: 422, description: 'validation_failed (e.g. vehicle.duplicate_fuel_type), or vehicle.limit_reached when the organization is at its vehicle cap (title = key, no errors[])'),
         ],
     )]
     #[Route('', name: 'create', methods: ['POST'])]
@@ -129,6 +143,10 @@ final class VehicleController extends AbstractController
         $org = $this->orgResolver->resolve();
         /** @var User $user */
         $user = $this->getUser();
+
+        if (($quotaError = $this->quota->violation($org)) !== null) {
+            return $this->problem($quotaError, 422);
+        }
 
         $vehicle = (new Vehicle())
             ->setOrganization($org)
@@ -147,7 +165,7 @@ final class VehicleController extends AbstractController
         // Valida vincoli a livello entity (es. bi-fuel duplicato)
         $errors = $this->validator->validate($vehicle);
         if (count($errors) > 0) {
-            return $this->validationError($errors);
+            return $this->validationProblem($errors);
         }
 
         $this->em->persist($vehicle);
@@ -177,7 +195,7 @@ final class VehicleController extends AbstractController
             new OA\Response(response: 200, description: 'Updated', content: new OA\JsonContent(ref: new Model(type: Vehicle::class, groups: ['vehicle:read']))),
             new OA\Response(response: 403, description: 'No EDIT permission'),
             new OA\Response(response: 404, description: 'Not found'),
-            new OA\Response(response: 422, description: 'validation_failed'),
+            new OA\Response(response: 422, description: 'validation_failed (e.g. vehicle.fuel_type_in_use: a fuel still used by existing refuelings cannot be removed)'),
         ],
     )]
     #[Route('/{id}', name: 'update', methods: ['PUT'], requirements: ['id' => '\d+'])]
@@ -185,6 +203,12 @@ final class VehicleController extends AbstractController
     {
         $vehicle = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
+
+        // Va calcolato prima di applicare il payload: serve il confronto con i carburanti attuali.
+        $strandedField = $this->fuelFieldDroppedWhileInUse($vehicle, $payload);
+        if ($strandedField !== null) {
+            return $this->fieldProblem($strandedField, 'vehicle.fuel_type_in_use');
+        }
 
         $vehicle
             ->setName($payload->name)
@@ -201,7 +225,7 @@ final class VehicleController extends AbstractController
 
         $errors = $this->validator->validate($vehicle);
         if (count($errors) > 0) {
-            return $this->validationError($errors);
+            return $this->validationProblem($errors);
         }
 
         $this->em->flush();
@@ -495,6 +519,78 @@ final class VehicleController extends AbstractController
         return new JsonResponse(null, 204);
     }
 
+    // ----- Ownership transfer -----
+
+    #[OA\Get(
+        summary: 'Org members the vehicle ownership can be transferred to (names only, no emails)',
+        description: 'Accepted, non-anonymized members of the vehicle\'s organization with any role, excluding the current owner (the caller is included when they are not the owner, e.g. an org admin adopting a member\'s vehicle). Requires SHARE on the vehicle (owner or org owner/admin).',
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Array of {id, firstName, lastName}, ordered by last then first name',
+                content: new OA\JsonContent(type: 'array', items: new OA\Items(properties: [
+                    new OA\Property(property: 'id', type: 'integer'),
+                    new OA\Property(property: 'firstName', type: 'string'),
+                    new OA\Property(property: 'lastName', type: 'string'),
+                ], type: 'object')),
+            ),
+            new OA\Response(response: 403, description: 'No SHARE permission'),
+            new OA\Response(response: 404, description: 'vehicle.not_found (also other organization)'),
+        ],
+    )]
+    #[Route('/{id}/transfer-candidates', name: 'transfer_candidates', methods: ['GET'], requirements: ['id' => '\d+'])]
+    public function transferCandidates(int $id): JsonResponse
+    {
+        $vehicle = $this->mustFind($id);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
+
+        $candidates = [];
+        foreach ($this->memberRepo->findTransferCandidates($vehicle->getOrganization(), $this->shareRepo->findOwnerShare($vehicle)?->getUser()) as $member) {
+            $candidate = $member->getUser();
+            $candidates[] = [
+                'id' => $candidate->getId(),
+                'firstName' => $candidate->getFirstName(),
+                'lastName' => $candidate->getLastName(),
+            ];
+        }
+
+        return new JsonResponse($candidates);
+    }
+
+    #[OA\Post(
+        summary: 'Transfer the vehicle ownership to another org member (direct, no acceptance step)',
+        description: 'Requires SHARE on the vehicle (current owner, or org owner/admin, who can also adopt an orphan vehicle). Only ownership moves: the recipient gets the single accepted `admin` share, so dashboard totals, charts, upcoming reminders and notifications (history included) follow them; the records of the vehicle are not rewritten. The previous owner keeps a read-only `viewer` share when keepAccess is true (default), otherwise their share is deleted. Other users\' shares are untouched. Reminders not completed get their notification state reset, so the new owner is notified of what is already due. Archived vehicles can be transferred. One transaction with a write lock on the vehicle; the new owner (always) and the previous owner (unless they are the caller) are notified by email and push after commit, best-effort. Same 422 for any invalid recipient (unknown id, other organization, pending, anonymized): accounts cannot be discovered.',
+        parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: VehicleTransferRequest::class))),
+        responses: [
+            new OA\Response(response: 204, description: 'Transferred'),
+            new OA\Response(response: 403, description: 'No SHARE permission'),
+            new OA\Response(response: 404, description: 'vehicle.not_found (also other organization)'),
+            new OA\Response(response: 409, description: 'transfer.same_owner | transfer.ownership_changed (the caller lost the right while the request waited for the lock)'),
+            new OA\Response(response: 422, description: 'transfer.recipient_invalid | validation_failed'),
+        ],
+    )]
+    #[Route('/{id}/transfer', name: 'transfer', methods: ['POST'], requirements: ['id' => '\d+'])]
+    public function transfer(int $id, #[MapRequestPayload] VehicleTransferRequest $payload): JsonResponse
+    {
+        $vehicle = $this->mustFind($id);
+        $this->denyAccessUnlessGranted(VehicleVoter::SHARE, $vehicle);
+
+        /** @var User $actor */
+        $actor = $this->getUser();
+        try {
+            $outcome = $this->ownershipTransfer->transfer($vehicle, $payload->userId, $payload->keepAccess, $actor);
+        } catch (VehicleTransferException $e) {
+            return $this->problem($e->key, $e->status);
+        }
+
+        // Dopo il commit: un avviso che fallisce non deve far fallire un trasferimento già persistito.
+        $this->notifier->vehicleTransferred($outcome, $actor);
+
+        return new JsonResponse(null, 204);
+    }
+
     // ----- helpers -----
 
     /** Dettaglio del veicolo con `ownership` e `permissions` dell'utente corrente. */
@@ -549,6 +645,32 @@ final class VehicleController extends AbstractController
         return $ids;
     }
 
+    /**
+     * Campo del payload che toglie un carburante ancora usato da dei rifornimenti, o null se nessuno.
+     * Senza questo controllo quei rifornimenti restano nei totali di spesa ma spariscono dal consumo,
+     * e modificarli darebbe 422 (`refueling.fuel_type_not_supported`).
+     */
+    private function fuelFieldDroppedWhileInUse(Vehicle $vehicle, VehicleRequest $payload): ?string
+    {
+        $newFuels = array_filter([$payload->fuelType, $payload->secondaryFuelType]);
+        $dropped = array_filter(
+            $vehicle->getAllFuelTypes(),
+            static fn (FuelType $fuel): bool => !in_array($fuel, $newFuels, true),
+        );
+        if ($dropped === []) {
+            return null;
+        }
+
+        $inUse = $this->refuelingRepo->findUsedFuelTypes($vehicle);
+        foreach ($dropped as $fuel) {
+            if (in_array($fuel, $inUse, true)) {
+                return $fuel === $vehicle->getSecondaryFuelType() ? 'secondaryFuelType' : 'fuelType';
+            }
+        }
+
+        return null;
+    }
+
     private function mustFind(int $id): Vehicle
     {
         $org = $this->orgResolver->resolve();
@@ -566,18 +688,6 @@ final class VehicleController extends AbstractController
             $status,
             [],
             json: true,
-        );
-    }
-
-    private function validationError(\Symfony\Component\Validator\ConstraintViolationListInterface $errors): JsonResponse
-    {
-        $details = [];
-        foreach ($errors as $error) {
-            $details[] = ['field' => $error->getPropertyPath(), 'message' => $error->getMessage()];
-        }
-        return new JsonResponse(
-            ['type' => 'about:blank', 'title' => 'validation_failed', 'status' => 422, 'errors' => $details],
-            422,
         );
     }
 }

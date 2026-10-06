@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Organization;
+use App\Entity\OrganizationMember;
 use App\Entity\Reminder;
 use App\Entity\User;
+use App\Entity\Vehicle;
+use App\Enum\OrgRole;
 use App\Enum\ReminderUrgency;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
@@ -196,6 +199,154 @@ final class MailBuilder
             ];
 
         return $this->build($loc, $copy);
+    }
+
+    /** Nome del ruolo d'organizzazione nella lingua dell'email/push (stessi termini dell'interfaccia). */
+    public static function roleLabel(OrgRole $role, string $locale): string
+    {
+        return match ($role) {
+            OrgRole::OWNER => $locale === 'en' ? 'Owner' : 'Proprietario',
+            OrgRole::ADMIN => $locale === 'en' ? 'Admin' : 'Amministratore',
+            OrgRole::MEMBER => $locale === 'en' ? 'Member' : 'Membro',
+        };
+    }
+
+    /**
+     * Avviso al membro il cui ruolo nell'organizzazione è stato cambiato da $actor.
+     * Il ruolo nuovo è quello già salvato su $member.
+     */
+    public function roleChanged(OrganizationMember $member, User $actor): Email
+    {
+        $user = $member->getUser();
+        $loc = $this->locale($user);
+        $orgName = $member->getOrganization()->getName();
+        $actorName = trim($actor->getFirstName().' '.$actor->getLastName());
+        $role = self::roleLabel($member->getRole(), $loc);
+        $first = $user->getFirstName();
+
+        $copy = $loc === 'en'
+            ? [
+                'subject' => 'AutoCron — Your role in '.$orgName.' has changed',
+                'heading' => 'Your role has changed',
+                'greeting' => sprintf('Hi %s,', $first),
+                'paragraphs' => [
+                    sprintf('%s changed your role in the organization "%s": you are now %s.', $actorName, $orgName, $role),
+                ],
+                'button' => ['label' => 'Open AutoCron', 'url' => $this->link('')],
+                'footer' => "You're receiving this because you are a member of this organization in AutoCron.",
+            ]
+            : [
+                'subject' => 'AutoCron — Il tuo ruolo in '.$orgName.' è cambiato',
+                'heading' => 'Il tuo ruolo è cambiato',
+                'greeting' => sprintf('Ciao %s,', $first),
+                'paragraphs' => [
+                    sprintf('%s ha cambiato il tuo ruolo nell\'organizzazione "%s": ora sei %s.', $actorName, $orgName, $role),
+                ],
+                'button' => ['label' => 'Apri AutoCron', 'url' => $this->link('')],
+                'footer' => 'Ricevi questa email perché fai parte di questa organizzazione in AutoCron.',
+            ];
+
+        return $this->build($loc, $copy);
+    }
+
+    /**
+     * Avviso al nuovo proprietario di un veicolo. $actor è chi ha eseguito il trasferimento (può essere
+     * lo stesso $newOwner, per un owner/admin che prende in carico un veicolo); $previousOwner è nullo
+     * per un veicolo orfano.
+     */
+    public function vehicleReceived(User $newOwner, Vehicle $vehicle, User $actor, ?User $previousOwner): Email
+    {
+        $loc = $this->locale($newOwner);
+        $en = $loc === 'en';
+        $vehicleName = $vehicle->getName();
+        $orgName = $vehicle->getOrganization()->getName();
+        $self = $actor->getId() === $newOwner->getId();
+        $actorName = self::fullName($actor);
+        $fromName = $previousOwner !== null && $previousOwner->getId() !== $actor->getId() ? self::fullName($previousOwner) : null;
+
+        if ($en) {
+            $first = $self
+                ? sprintf('You took over the ownership of the vehicle "%s" in the organization "%s".', $vehicleName, $orgName)
+                : sprintf('%s transferred the ownership of the vehicle "%s" in the organization "%s" to you.', $actorName, $vehicleName, $orgName);
+            $paragraphs = [$first];
+            if ($fromName !== null) {
+                $paragraphs[] = sprintf('Previous owner: %s.', $fromName);
+            }
+            $paragraphs[] = 'Reminders, totals and charts of this vehicle, history included, are now yours.';
+            $copy = [
+                'subject' => 'AutoCron — '.$vehicleName.' is now yours',
+                'heading' => 'You are now the owner of a vehicle',
+                'greeting' => sprintf('Hi %s,', $newOwner->getFirstName()),
+                'paragraphs' => $paragraphs,
+                'button' => ['label' => 'Open the vehicle', 'url' => $this->link('/vehicles/'.$vehicle->getId())],
+                'footer' => "You're receiving this because you are a member of this organization in AutoCron.",
+            ];
+        } else {
+            $first = $self
+                ? sprintf('Hai preso in carico la proprietà del veicolo "%s" nell\'organizzazione "%s".', $vehicleName, $orgName)
+                : sprintf('%s ti ha trasferito la proprietà del veicolo "%s" nell\'organizzazione "%s".', $actorName, $vehicleName, $orgName);
+            $paragraphs = [$first];
+            if ($fromName !== null) {
+                $paragraphs[] = sprintf('Precedente proprietario: %s.', $fromName);
+            }
+            $paragraphs[] = 'Promemoria, totali e grafici di questo veicolo, storico incluso, ora sono tuoi.';
+            $copy = [
+                'subject' => 'AutoCron — '.$vehicleName.' ora è tuo',
+                'heading' => 'Sei il nuovo proprietario di un veicolo',
+                'greeting' => sprintf('Ciao %s,', $newOwner->getFirstName()),
+                'paragraphs' => $paragraphs,
+                'button' => ['label' => 'Apri il veicolo', 'url' => $this->link('/vehicles/'.$vehicle->getId())],
+                'footer' => 'Ricevi questa email perché fai parte di questa organizzazione in AutoCron.',
+            ];
+        }
+
+        return $this->build($loc, $copy);
+    }
+
+    /**
+     * Avviso al precedente proprietario (non è chi ha eseguito il trasferimento): a chi è passato il
+     * veicolo e se gli resta l'accesso in sola lettura.
+     */
+    public function vehicleHandedOver(User $previousOwner, Vehicle $vehicle, User $newOwner, User $actor, bool $keepAccess): Email
+    {
+        $loc = $this->locale($previousOwner);
+        $vehicleName = $vehicle->getName();
+        $orgName = $vehicle->getOrganization()->getName();
+        $actorName = self::fullName($actor);
+        $newName = self::fullName($newOwner);
+
+        $copy = $loc === 'en'
+            ? [
+                'subject' => 'AutoCron — '.$vehicleName.' has a new owner',
+                'heading' => 'Vehicle ownership transferred',
+                'greeting' => sprintf('Hi %s,', $previousOwner->getFirstName()),
+                'paragraphs' => [
+                    sprintf('%s transferred the ownership of the vehicle "%s" in the organization "%s" to %s.', $actorName, $vehicleName, $orgName, $newName),
+                    $keepAccess ? 'You keep read-only access to the vehicle.' : 'You no longer have direct access to the vehicle.',
+                    'Its reminders, totals and charts now belong to the new owner.',
+                ],
+                'button' => ['label' => 'Open AutoCron', 'url' => $this->link('')],
+                'footer' => "You're receiving this because you owned this vehicle in AutoCron.",
+            ]
+            : [
+                'subject' => 'AutoCron — '.$vehicleName.' ha un nuovo proprietario',
+                'heading' => 'Proprietà del veicolo trasferita',
+                'greeting' => sprintf('Ciao %s,', $previousOwner->getFirstName()),
+                'paragraphs' => [
+                    sprintf('%s ha trasferito la proprietà del veicolo "%s" nell\'organizzazione "%s" a %s.', $actorName, $vehicleName, $orgName, $newName),
+                    $keepAccess ? 'Mantieni l\'accesso al veicolo in sola lettura.' : 'Non hai più un accesso diretto al veicolo.',
+                    'Promemoria, totali e grafici ora appartengono al nuovo proprietario.',
+                ],
+                'button' => ['label' => 'Apri AutoCron', 'url' => $this->link('')],
+                'footer' => 'Ricevi questa email perché eri il proprietario di questo veicolo in AutoCron.',
+            ];
+
+        return $this->build($loc, $copy);
+    }
+
+    private static function fullName(User $user): string
+    {
+        return trim($user->getFirstName().' '.$user->getLastName());
     }
 
     private function locale(User $user): string

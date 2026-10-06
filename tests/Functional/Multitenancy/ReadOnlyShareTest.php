@@ -107,6 +107,8 @@ final class ReadOnlyShareTest extends ApiTestCase
         yield 'share create' => ['POST', '/api/vehicles/{vehicle}/shares', ['userIds' => [1]]];
         yield 'share list' => ['GET', '/api/vehicles/{vehicle}/shares', []];
         yield 'share candidates' => ['GET', '/api/vehicles/{vehicle}/share-candidates', []];
+        yield 'transfer candidates' => ['GET', '/api/vehicles/{vehicle}/transfer-candidates', []];
+        yield 'vehicle transfer' => ['POST', '/api/vehicles/{vehicle}/transfer', ['userId' => 1]];
 
         yield 'maintenance create' => ['POST', '/api/maintenances', [
             'vehicleId' => '{vehicle}', 'performedAt' => '2026-01-10', 'km' => 1000, 'type' => 'oil_change', 'description' => 'x',

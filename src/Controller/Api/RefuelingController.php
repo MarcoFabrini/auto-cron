@@ -183,12 +183,7 @@ final class RefuelingController extends AbstractController
             return null;
         }
 
-        return new JsonResponse([
-            'type' => 'about:blank',
-            'title' => 'validation_failed',
-            'status' => 422,
-            'errors' => [['field' => 'fuelType', 'message' => 'refueling.fuel_type_not_supported']],
-        ], 422);
+        return $this->fieldProblem('fuelType', 'refueling.fuel_type_not_supported');
     }
 
     private function mustFind(int $id): Refueling

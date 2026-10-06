@@ -10,6 +10,7 @@ use App\Entity\Vehicle;
 use App\Enum\ExpenseCategory;
 use App\Enum\FuelType;
 use App\Enum\OrgRole;
+use App\Enum\RecurringPeriod;
 use App\Enum\ShareRole;
 use App\Tests\Factory\OrganizationFactory;
 use App\Tests\Factory\OrganizationMemberFactory;
@@ -268,6 +269,190 @@ final class DashboardChartsTest extends ApiTestCase
         self::assertNull($body['months'][1]['consumption']['diesel']);
     }
 
+    // ---------------- spese ricorrenti ----------------
+
+    public function testMonthlyRecurringExpenseCountsEveryChargeAlreadyDue(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        // Primo addebito tre mesi fa, il 1: addebiti a -3, -2, -1 e 0 (oggi è comunque >= 1 del mese).
+        $this->recurringExpense($vehicle, $this->day(-3), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION);
+
+        $body = $this->charts($token, '?months=6');
+
+        self::assertSame(['0.00', '0.00', '50.00', '50.00', '50.00', '50.00'], $this->expensesPerMonth($body));
+        self::assertSame(['0.00', '0.00', '50.00', '50.00', '50.00', '50.00'], array_map(
+            static fn (array $point): string => $point['spending']['total'],
+            $body['months'],
+        ));
+        self::assertSame([['category' => 'subscription', 'amount' => '200.00']], $body['spendingByCategory']);
+        self::assertSame('200.00', $body['totals']['spending']);
+    }
+
+    public function testRecurringStartedBeforeTheWindowCountsOnlyItsInWindowCharges(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->day(-10), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION);
+
+        $body = $this->charts($token, '?months=3');
+
+        self::assertSame(['50.00', '50.00', '50.00'], $this->expensesPerMonth($body));
+        self::assertSame([['category' => 'subscription', 'amount' => '150.00']], $body['spendingByCategory']);
+        self::assertSame('150.00', $body['totals']['spending']);
+    }
+
+    public function testYearlyRecurringLandsInTheMonthOfEachAnniversary(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->day(-12), '300.00', RecurringPeriod::YEARLY, ExpenseCategory::INSURANCE);
+
+        $body = $this->charts($token, '?months=24');
+
+        $perMonth = array_combine(array_column($body['months'], 'month'), $this->expensesPerMonth($body));
+        self::assertSame('300.00', $perMonth[$this->monthKey(-12)]);
+        self::assertSame('300.00', $perMonth[$this->monthKey(0)]);
+        unset($perMonth[$this->monthKey(-12)], $perMonth[$this->monthKey(0)]);
+        self::assertSame(['0.00'], array_values(array_unique($perMonth)), 'Negli altri mesi non cade nessun addebito');
+        self::assertSame([['category' => 'insurance', 'amount' => '600.00']], $body['spendingByCategory']);
+    }
+
+    public function testWeeklyRecurringCountsOneChargePerWeekInTheRightMonths(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $today = $this->today();
+        $this->recurringExpense($vehicle, $today->modify('-3 weeks'), '10.00', RecurringPeriod::WEEKLY, ExpenseCategory::PARKING);
+
+        $body = $this->charts($token, '?months=3');
+
+        // Quattro addebiti: oggi e le tre settimane precedenti, ognuno nel suo mese.
+        $expected = [];
+        foreach (range(-2, 0) as $offset) {
+            $expected[$this->monthKey($offset)] = 0;
+        }
+        foreach ([3, 2, 1, 0] as $weeksAgo) {
+            $expected[$today->modify("-{$weeksAgo} weeks")->format('Y-m')] += 1000;
+        }
+        self::assertSame(
+            array_map(static fn (int $cents): string => number_format($cents / 100, 2, '.', ''), array_values($expected)),
+            $this->expensesPerMonth($body),
+        );
+        self::assertSame([['category' => 'parking', 'amount' => '40.00']], $body['spendingByCategory']);
+    }
+
+    public function testStartingTodayCountsTheFirstCharge(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->today(), '25.00', RecurringPeriod::MONTHLY, ExpenseCategory::TOLL);
+
+        $body = $this->charts($token, '?months=2');
+
+        self::assertSame(['0.00', '25.00'], $this->expensesPerMonth($body));
+        self::assertSame([['category' => 'toll', 'amount' => '25.00']], $body['spendingByCategory']);
+    }
+
+    public function testRecurringUntilInTheMiddleOfTheWindowStopsTheCharges(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        // Addebiti il 1 di -5, -4, -3, -2…; il 10 di -3 chiude: l'ultimo è quello del 1 di -3 (finestra: da -5 a 0).
+        $this->recurringExpense($vehicle, $this->day(-5), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-3, 10));
+
+        $body = $this->charts($token, '?months=6');
+
+        self::assertSame(['50.00', '50.00', '50.00', '0.00', '0.00', '0.00'], $this->expensesPerMonth($body));
+        self::assertSame('150.00', $body['totals']['spending']);
+    }
+
+    public function testRecurringUntilOnAChargeDateIncludesThatCharge(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->day(-5), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-3));
+
+        $body = $this->charts($token, '?months=6');
+
+        self::assertSame(['50.00', '50.00', '50.00', '0.00', '0.00', '0.00'], $this->expensesPerMonth($body));
+    }
+
+    public function testRecurringEndedBeforeTheWindowContributesNothing(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->day(-10), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-4, 28));
+
+        $body = $this->charts($token, '?months=3');
+
+        self::assertSame(['0.00', '0.00', '0.00'], $this->expensesPerMonth($body));
+        self::assertSame([], $body['spendingByCategory']);
+        self::assertSame('0.00', $body['totals']['spending']);
+    }
+
+    public function testFutureChargesAreNotCounted(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        // Trimestrale dal 1 di -1: il prossimo addebito è a +2 mesi, quindi conta solo il primo.
+        $this->recurringExpense($vehicle, $this->day(-1), '90.00', RecurringPeriod::QUARTERLY, ExpenseCategory::INSURANCE);
+        // Mensile che parte il mese prossimo: nessun addebito ancora.
+        $this->recurringExpense($vehicle, $this->day(1), '999.00', RecurringPeriod::MONTHLY, ExpenseCategory::INSURANCE);
+
+        $body = $this->charts($token, '?months=3');
+
+        self::assertSame(['0.00', '90.00', '0.00'], $this->expensesPerMonth($body));
+        self::assertSame([['category' => 'insurance', 'amount' => '90.00']], $body['spendingByCategory']);
+        self::assertSame('90.00', $body['totals']['spending']);
+    }
+
+    public function testRecurringAndOneOffExpensesShareMonthsAndCategories(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org);
+        $this->recurringExpense($vehicle, $this->day(-1), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::INSURANCE); // -1 e 0
+        $this->expense($vehicle, $this->day(-1, 15), '30.25', ExpenseCategory::INSURANCE);
+        $this->expense($vehicle, $this->day(0), '7.50', ExpenseCategory::TOLL);
+
+        $body = $this->charts($token, '?months=2');
+
+        self::assertSame(['80.25', '57.50'], $this->expensesPerMonth($body));
+        self::assertSame([
+            ['category' => 'insurance', 'amount' => '130.25'],
+            ['category' => 'toll', 'amount' => '7.50'],
+        ], $body['spendingByCategory']);
+    }
+
+    public function testMonthlyTotalsTotalSpendingAndCategoriesAlwaysAgree(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($user, $org, ['initialKm' => 1000]);
+        $other = $this->ownedVehicle($user, $org);
+        $this->refueling($vehicle, $this->day(-1), 1000, '10.000', '1.3300');
+        $this->maintenance($vehicle, $this->day(0), 1100, '120.10');
+        $this->expense($vehicle, $this->day(-2, 3), '19.99', ExpenseCategory::PARKING);
+        $this->recurringExpense($vehicle, $this->day(-9), '12.34', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION);
+        $this->recurringExpense($vehicle, $this->day(-6, 20), '7.77', RecurringPeriod::WEEKLY, ExpenseCategory::PARKING, $this->day(-1, 5));
+        $this->recurringExpense($other, $this->day(-4), '300.10', RecurringPeriod::QUARTERLY, ExpenseCategory::INSURANCE);
+        $this->recurringExpense($other, $this->day(-30), '1.01', RecurringPeriod::BIENNIAL, ExpenseCategory::TAX);
+
+        $body = $this->charts($token, '?months=6');
+
+        $monthlyCents = array_sum(array_map(static fn (array $p): int => self::toCents($p['spending']['total']), $body['months']));
+        $categoryCents = array_sum(array_map(static fn (array $c): int => self::toCents($c['amount']), $body['spendingByCategory']));
+        self::assertGreaterThan(0, $monthlyCents);
+        self::assertSame(self::toCents($body['totals']['spending']), $monthlyCents);
+        self::assertSame($monthlyCents, $categoryCents);
+        foreach ($body['months'] as $point) {
+            $spending = $point['spending'];
+            self::assertSame(
+                self::toCents($spending['total']),
+                self::toCents($spending['refuelings']) + self::toCents($spending['maintenances']) + self::toCents($spending['expenses']),
+            );
+        }
+    }
+
     // ---------------- isolamento ----------------
 
     /**
@@ -350,6 +535,24 @@ final class DashboardChartsTest extends ApiTestCase
         $this->refueling($vehicle, $this->day(0), 50600, '500.000', '2.0000', fuel: FuelType::GASOLINE);
         $this->maintenance($vehicle, $this->day(0), 51000, '1000.00');
         $this->expense($vehicle, $this->day(0), '1000.00', ExpenseCategory::TOLL);
+        // Anche una spesa ricorrente (addebiti nella finestra) non deve filtrare nei grafici altrui.
+        $this->recurringExpense($vehicle, $this->day(-1), '1000.00', RecurringPeriod::MONTHLY, ExpenseCategory::INSURANCE);
+    }
+
+    /**
+     * Spese di ogni mese della finestra (stringhe a 2 decimali), in ordine.
+     *
+     * @param array<string, mixed> $body
+     * @return list<string>
+     */
+    private function expensesPerMonth(array $body): array
+    {
+        return array_values(array_map(static fn (array $point): string => $point['spending']['expenses'], $body['months']));
+    }
+
+    private static function toCents(string $amount): int
+    {
+        return (int) round((float) $amount * 100);
     }
 
     /**

@@ -1,11 +1,13 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, FormField, Input, Spinner, Text } from '@/components/ui';
 import { AuthLayout } from '@/components/layout';
-import { AuthBrand } from '@/components/features';
+import { AuthBrand, AuthLink } from '@/components/features';
 import { useRegister } from '@/hooks/useRegister';
+import { useFieldErrorMessage } from '@/hooks/useFieldErrorMessage';
+import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
 import { ApiError } from '@/api/client';
 import { registerSchema, type RegisterFormData } from '@/schemas/auth.schema';
 
@@ -30,7 +32,9 @@ export function RegisterPage() {
   });
 
   const errors = form.formState.errors;
-  const tErr = (k?: string) => (k ? t(`errors.${k}`, { defaultValue: t(k, { defaultValue: k }) }) : undefined);
+  const tErr = useFieldErrorMessage();
+  // 422 del backend (password troppo lunga, ecc.) sui campi; hasUnmapped = campo senza input visibile.
+  const { hasUnmapped } = useServerFieldErrors(form, error);
 
   function submit(data: RegisterFormData) {
     mutate(
@@ -51,8 +55,11 @@ export function RegisterPage() {
     );
   }
 
+  // email_taken è già sul campo email (onError); i 422 sui campi restano lì, salvo quelli senza campo visibile.
   const showGlobalError =
-    error instanceof ApiError && error.title !== 'auth.email_taken' && error.title !== 'validation_failed';
+    error instanceof ApiError &&
+    error.title !== 'auth.email_taken' &&
+    (error.title !== 'validation_failed' || hasUnmapped);
 
   return (
     <AuthLayout>
@@ -130,9 +137,7 @@ export function RegisterPage() {
 
       <Text variant="muted" className="text-center">
         {t('auth.register.have_account')}{' '}
-        <Link to="/login" className="font-medium text-primary hover:underline">
-          {t('auth.register.login')}
-        </Link>
+        <AuthLink to="/login">{t('auth.register.login')}</AuthLink>
       </Text>
     </AuthLayout>
   );

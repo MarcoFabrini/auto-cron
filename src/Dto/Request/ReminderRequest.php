@@ -23,7 +23,7 @@ final class ReminderRequest
         #[Assert\Date]
         public ?string $dueDate = null,
 
-        #[Assert\Range(min: 0, max: 9_999_999)]
+        #[Assert\Range(min: 0, max: 9_999_999, notInRangeMessage: 'common.km_too_large')]
         public ?int $dueKm = null,
 
         #[Assert\Range(min: 0, max: 365)]

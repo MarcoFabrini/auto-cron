@@ -16,7 +16,7 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[ORM\Entity(repositoryClass: OrganizationRepository::class)]
 #[ORM\Table(name: 'organizations')]
 #[ORM\HasLifecycleCallbacks]
-#[UniqueEntity(fields: ['slug'])]
+#[UniqueEntity(fields: ['slug'], message: 'org.slug_taken', errorPath: 'slug')]
 class Organization
 {
     use TimestampableTrait;

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Building2,
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
   Separator,
+  Spinner,
   Text,
 } from '@/components/ui';
 import { PageHeader } from '@/components/layout';
@@ -79,7 +80,22 @@ export function SettingsPage() {
   const { toast } = useToast();
   const errorMessage = useApiErrorMessage();
 
+  const languageLabelId = useId();
+  const themeLabelId = useId();
+
   const [dialog, setDialog] = useState<DialogKey>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Il logout è asincrono (push, revoca refresh token): senza guardia un secondo tap lo ripete.
+  async function onLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   /**
    * Lingua unificata: cambia subito la UI (i18next, ottimistico) e persiste il
@@ -118,21 +134,19 @@ export function SettingsPage() {
 
       {/* ── Profilo (info utente) ─────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2">
-              <UserIcon className="size-4" />
-              {t('settings.profile')}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setDialog('profile')}
-              aria-label={t('actions.edit')}
-            >
-              <Pencil />
-            </Button>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle as="h2" className="flex items-center gap-2">
+            <UserIcon className="size-4" />
+            {t('settings.profile')}
           </CardTitle>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDialog('profile')}
+            aria-label={t('actions.edit')}
+          >
+            <Pencil />
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           {user && (
@@ -166,21 +180,19 @@ export function SettingsPage() {
 
       {/* ── Sicurezza ─────────────────────────────────────────── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2">
-              <KeyRound className="size-4" />
-              {t('settings.security')}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setDialog('password')}
-              aria-label={t('account.change_password')}
-            >
-              <Pencil />
-            </Button>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle as="h2" className="flex items-center gap-2">
+            <KeyRound className="size-4" />
+            {t('settings.security')}
           </CardTitle>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setDialog('password')}
+            aria-label={t('account.change_password')}
+          >
+            <Pencil />
+          </Button>
         </CardHeader>
         <CardContent>
           <InfoRow
@@ -194,23 +206,21 @@ export function SettingsPage() {
       {/* ── Organizzazione ────────────────────────────────────── */}
       {membership && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
-                <Building2 className="size-4" />
-                {t('settings.organization')}
-              </span>
-              {canEditOrg && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setDialog('org')}
-                  aria-label={t('actions.edit')}
-                >
-                  <Pencil />
-                </Button>
-              )}
+          <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+            <CardTitle as="h2" className="flex items-center gap-2">
+              <Building2 className="size-4" />
+              {t('settings.organization')}
             </CardTitle>
+            {canEditOrg && (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setDialog('org')}
+                aria-label={t('actions.edit')}
+              >
+                <Pencil />
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <InfoRow
@@ -229,26 +239,30 @@ export function SettingsPage() {
 
       {/* ── Membri organizzazione (owner/admin) ───────────────── */}
       {membership && canEditOrg && user && (
-        <MembersCard organizationId={membership.organization.id} currentUserId={user.id} />
+        <MembersCard
+          organizationId={membership.organization.id}
+          currentUserId={user.id}
+          currentRole={membership.role}
+        />
       )}
 
       {/* ── Preferenze app ────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>{t('settings.preferences')}</CardTitle>
+          <CardTitle as="h2">{t('settings.preferences')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Globe className="size-4 text-muted-foreground" />
-              <Text>{t('settings.language')}</Text>
+              <Text id={languageLabelId}>{t('settings.language')}</Text>
             </div>
             <Select
               value={i18n.language.startsWith('en') ? 'en' : 'it'}
               onValueChange={(v) => changeLanguage(v as 'it' | 'en')}
               disabled={updateProfile.isPending}
             >
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-32" aria-labelledby={languageLabelId}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -267,10 +281,10 @@ export function SettingsPage() {
               ) : (
                 <Sun className="size-4 text-muted-foreground" />
               )}
-              <Text>{t('settings.theme')}</Text>
+              <Text id={themeLabelId}>{t('settings.theme')}</Text>
             </div>
             <Select value={theme} onValueChange={(v) => setTheme(v as Theme)}>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-32" aria-labelledby={themeLabelId}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -287,8 +301,8 @@ export function SettingsPage() {
       <PushSettingsCard />
 
       {/* ── Logout ────────────────────────────────────────────── */}
-      <Button variant="destructive" fullWidth onClick={() => void logout()}>
-        <LogOut />
+      <Button variant="destructive" fullWidth disabled={loggingOut} onClick={() => void onLogout()}>
+        {loggingOut ? <Spinner size="sm" /> : <LogOut />}
         {t('auth.logout')}
       </Button>
 

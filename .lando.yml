@@ -67,7 +67,9 @@ tooling:
       XDEBUG_MODE: "off"
   phpstan:
     service: appserver
-    cmd: php vendor/bin/phpstan analyse --memory-limit=512M --no-progress
+    cmd: php vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+    env:
+      XDEBUG_MODE: "off"
   jwt-keys:
     service: appserver
     cmd: php bin/console lexik:jwt:generate-keypair --skip-if-exists

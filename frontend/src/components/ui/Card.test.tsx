@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { Car } from 'lucide-react';
-import { CardContent } from './Card';
+import { CardContent, CardTitle } from './Card';
 import { StatCard } from '@/components/features/StatCard';
 
 /**
@@ -36,7 +36,20 @@ describe('CardContent', () => {
 
   it('StatCard non eredita il padding-top zero del default', () => {
     const { container } = render(<StatCard Icon={Car} label="Veicoli" value={1} />);
-    const content = container.querySelector('.flex.items-center') as HTMLElement;
+    const content = container.querySelector('.flex.flex-col') as HTMLElement;
     expect(content.className).not.toMatch(/pt-0|md:p-6/);
+  });
+});
+
+describe('CardTitle', () => {
+  it('di default non ha semantica di heading', () => {
+    render(<CardTitle>Titolo</CardTitle>);
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+  });
+
+  it('con `as` rende il tag richiesto mantenendo lo stile', () => {
+    render(<CardTitle as="h2">Titolo</CardTitle>);
+    const heading = screen.getByRole('heading', { level: 2, name: 'Titolo' });
+    expect(heading).toHaveClass('font-semibold');
   });
 });

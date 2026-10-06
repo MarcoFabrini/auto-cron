@@ -1,7 +1,8 @@
 name: CI
 
 # Solo al rilascio di una versione (tag vX.Y.Z da scripts/publish-github.sh): i push su main non
-# rifanno test né immagini. workflow_dispatch permette di lanciare i test a mano, senza pubblicare.
+# rifanno test né immagini. workflow_dispatch permette di lanciare i test a mano e lo smoke test
+# dell'immagine di produzione (job image-smoke), senza mai pubblicare.
 on:
   push:
     tags: ['v*.*.*']
@@ -161,6 +162,24 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Smoke test PRIMA di pubblicare: l'immagine linux/amd64 si costruisce e si carica nel Docker locale
+      # (load: true), poi scripts/smoke-image.sh la avvia con un MariaDB usa-e-getta e verifica SPA, API,
+      # header, migrazioni e chiavi JWT. Se fallisce il job si ferma qui e nessun tag arriva su GHCR.
+      # Il build multi-arch che segue riusa i layer di questo (stessa istanza BuildKit nel job).
+      - name: Build app image for the smoke test (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          target: prod
+          platforms: linux/amd64
+          load: true
+          tags: autocron-app:smoke
+          cache-from: type=gha
+
+      - name: Smoke test
+        run: scripts/smoke-image.sh autocron-app:smoke
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -180,3 +199,30 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Lancio a mano: stesso smoke test del job images, ma senza login né push (nessun permesso di scrittura).
+  image-smoke:
+    name: Smoke test dell'immagine (senza pubblicare)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build app image (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/app/Dockerfile
+          target: prod
+          platforms: linux/amd64
+          load: true
+          tags: autocron-app:smoke
+          cache-from: type=gha
+
+      - name: Smoke test
+        run: scripts/smoke-image.sh autocron-app:smoke

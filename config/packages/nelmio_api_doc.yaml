@@ -7,9 +7,10 @@ nelmio_api_doc:
                 Auth: JWT dual-channel (HttpOnly cookie web / Bearer mobile via `X-Client-Type` header).
                 Multi-tenant: every business resource scoped to active `organization_id` claim.
             version: 1.0.0
+        # URL relativo: "Try it out" e gli esempi puntano all'origine che serve la documentazione
         servers:
-            - url: http://localhost
-              description: Local dev
+            - url: /
+              description: This instance
         components:
             securitySchemes:
                 Bearer:
@@ -23,3 +24,15 @@ nelmio_api_doc:
             path_patterns:
                 - ^/api(?!/doc)
             disable_default_routes: true
+    # Gli script della UI si servono dalla stessa origine (public/bundles/nelmioapidoc, vedi docker/app/Dockerfile):
+    # la CSP di produzione ha script-src 'self', quindi né la CDN (default) né l'inline (offline) funzionano.
+    # Niente scalar_config: genererebbe uno script inline di bootstrap.
+    html_config:
+        assets_mode: bundle
+
+# In sviluppo il Caddyfile.dev manda ogni percorso non /api al SPA (e non c'è nessuna CSP): gli script
+# di Scalar arrivano dalla CDN come prima, senza dover ricostruire il container.
+when@dev:
+    nelmio_api_doc:
+        html_config:
+            assets_mode: cdn

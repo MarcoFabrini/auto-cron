@@ -4,21 +4,41 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\MessageHandler;
 
+use App\Entity\Organization;
+use App\Entity\Reminder;
+use App\Entity\User;
+use App\Entity\Vehicle;
 use App\Enum\OrgRole;
 use App\Enum\ReminderUrgency;
 use App\Entity\PushSubscription;
 use App\Enum\PushPlatform;
 use App\Message\SendReminderNotificationMessage;
 use App\MessageHandler\SendReminderNotificationHandler;
+use App\Repository\OrganizationMemberRepository;
+use App\Repository\PushSubscriptionRepository;
+use App\Repository\ReminderRepository;
+use App\Service\AppClock;
+use App\Service\AppMailer;
+use App\Service\MailBuilder;
+use App\Service\Push\PushDeliveryResult;
+use App\Service\Push\PushDispatcher;
+use App\Service\Push\PushNotifierInterface;
+use App\Service\Push\PushPayload;
+use App\Service\VehicleStatsService;
 use App\Tests\Factory\OrganizationMemberFactory;
 use App\Tests\Factory\RefuelingFactory;
 use App\Tests\Factory\ReminderFactory;
 use App\Tests\Factory\UserFactory;
 use App\Tests\Factory\VehicleFactory;
 use App\Tests\Factory\VehicleShareFactory;
+use App\Tests\Support\SpyLogger;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Mailer\Envelope;
+use Symfony\Component\Mailer\Exception\TransportException;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\RawMessage;
 use Zenstruck\Foundry\Test\Factories;
 use Zenstruck\Foundry\Test\ResetDatabase;
 
@@ -252,6 +272,51 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
         self::assertSame([], $this->extractRecipients($this->filterHandlerEmails('Anon')));
     }
 
+    public function testReminderWithoutEligibleOwnerIsReleasedSoItCanBeNotifiedLater(): void
+    {
+        // Il proprietario è anonimizzato: nessun destinatario idoneo
+        [$vehicle, $org] = $this->vehicleWithOwner('deleted-9-abc@anonymized.local');
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-1 day'), 'description' => 'Senza owner',
+        ]);
+        $logger = new SpyLogger();
+        $handler = new SendReminderNotificationHandler(
+            static::getContainer()->get(\App\Repository\ReminderRepository::class),
+            static::getContainer()->get(\App\Repository\OrganizationMemberRepository::class),
+            static::getContainer()->get(\App\Service\VehicleStatsService::class),
+            static::getContainer()->get(\App\Service\Push\PushDispatcher::class),
+            static::getContainer()->get(\App\Service\AppMailer::class),
+            static::getContainer()->get(\App\Service\MailBuilder::class),
+            $this->em,
+            $logger,
+            static::getContainer()->get(\App\Service\AppClock::class),
+        );
+        $message = new SendReminderNotificationMessage((int) $reminder->getId());
+
+        $handler($message);
+
+        $this->em->clear();
+        $fresh = $this->em->find(\App\Entity\Reminder::class, $reminder->getId());
+        self::assertNull($fresh?->getNotifiedUrgency(), 'Nessuno è stato avvisato: il livello non risulta notificato');
+        self::assertNull($fresh?->getLastNotifiedAt());
+        self::assertSame([], $this->filterHandlerEmails('Senza owner'));
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+        self::assertSame(['reminder_id' => $reminder->getId(), 'vehicle_id' => $vehicle->getId()], $logger->records[0]['context']);
+
+        // Appena il veicolo ha un proprietario idoneo, il giro successivo lo avvisa
+        $newOwner = UserFactory::createOne(['email' => 'arrived-later@test.it']);
+        OrganizationMemberFactory::createOne(['organization' => $org, 'user' => $newOwner, 'role' => OrgRole::MEMBER]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $this->em->find(\App\Entity\Vehicle::class, $vehicle->getId()), 'user' => $newOwner]);
+
+        $handler($message);
+
+        self::assertSame(['arrived-later@test.it'], $this->extractRecipients($this->filterHandlerEmails('Senza owner')));
+        $this->em->clear();
+        self::assertSame(ReminderUrgency::OVERDUE, $this->em->find(\App\Entity\Reminder::class, $reminder->getId())?->getNotifiedUrgency());
+    }
+
     public function testReleaseRestoresTheLastNotifiedTimestamp(): void
     {
         $reminder = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('-2 days')]);
@@ -279,6 +344,147 @@ final class SendReminderNotificationHandlerTest extends KernelTestCase
 
         $repo->releaseNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON);
         self::assertTrue($repo->claimNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON), 'rilasciato: si può riprovare');
+    }
+
+    public function testWhenNothingIsDeliveredTheClaimIsReleasedAndMessengerRetriesThenItGoesThrough(): void
+    {
+        [$vehicle, $org, $owner] = $this->vehicleWithOwnerAndDevice('unreachable@test.it');
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-1 day'), 'description' => 'Tutto giù',
+        ]);
+        $message = new SendReminderNotificationMessage((int) $reminder->getId());
+
+        // SMTP giù e push service che rifiuta: nessun canale consegna
+        $broken = $this->handlerWith(self::failingMailer(), self::pushNotifier(PushDeliveryResult::failed('push_service_down')));
+        try {
+            $broken($message);
+            self::fail('Senza nessuna consegna l\'handler deve sollevare, così Messenger ritenta');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('delivery failed for all recipients', $e->getMessage());
+        }
+
+        $this->em->clear();
+        $fresh = $this->em->find(Reminder::class, $reminder->getId());
+        self::assertNull($fresh?->getNotifiedUrgency(), 'Nessuno ha ricevuto nulla: il livello non risulta notificato');
+        self::assertNull($fresh?->getLastNotifiedAt());
+
+        // Al retry i canali funzionano: la notifica parte (il livello era stato rilasciato)
+        $this->handlerWith(static::getContainer()->get(MailerInterface::class), self::pushNotifier(PushDeliveryResult::ok()))($message);
+
+        self::assertSame(['unreachable@test.it'], $this->extractRecipients($this->filterHandlerEmails('Tutto giù')));
+        $this->em->clear();
+        self::assertSame(ReminderUrgency::OVERDUE, $this->em->find(Reminder::class, $reminder->getId())?->getNotifiedUrgency());
+    }
+
+    public function testASingleWorkingChannelKeepsTheLevelNotifiedSoRetriesDoNotDuplicate(): void
+    {
+        [$vehicle, $org] = $this->vehicleWithOwnerAndDevice('pushonly@test.it');
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-1 day'), 'description' => 'Solo push',
+        ]);
+        $message = new SendReminderNotificationMessage((int) $reminder->getId());
+        $pushes = new \ArrayObject();
+        $handler = $this->handlerWith(self::failingMailer(), self::pushNotifier(PushDeliveryResult::ok(), $pushes));
+
+        $handler($message); // l'email fallisce ma la push è arrivata: nessuna eccezione
+        $handler($message); // un secondo giro (doppione in coda, retry) non rimanda la push
+
+        self::assertCount(1, $pushes, 'La push parte una volta sola');
+        $this->em->clear();
+        self::assertSame(ReminderUrgency::OVERDUE, $this->em->find(Reminder::class, $reminder->getId())?->getNotifiedUrgency());
+    }
+
+    public function testADeadPushSubscriptionIsRemovedAndTheEmailStillDelivers(): void
+    {
+        [$vehicle, $org] = $this->vehicleWithOwnerAndDevice('gone@test.it');
+        $reminder = ReminderFactory::createOne([
+            'organization' => $org, 'vehicle' => $vehicle,
+            'dueDate' => new \DateTimeImmutable('-1 day'), 'description' => 'Device morto',
+        ]);
+
+        $this->handlerWith(
+            static::getContainer()->get(MailerInterface::class),
+            self::pushNotifier(PushDeliveryResult::failed('410 Gone', gone: true)),
+        )(new SendReminderNotificationMessage((int) $reminder->getId()));
+
+        self::assertSame(['gone@test.it'], $this->extractRecipients($this->filterHandlerEmails('Device morto')));
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM push_subscriptions'), 'Il device revocato lato push service va dimenticato');
+    }
+
+    /**
+     * Handler reale con mailer e notifier push sostituiti: gli unici due effetti collaterali che non si possono eseguire.
+     */
+    private function handlerWith(MailerInterface $mailer, PushNotifierInterface $notifier): SendReminderNotificationHandler
+    {
+        $container = static::getContainer();
+
+        return new SendReminderNotificationHandler(
+            $container->get(ReminderRepository::class),
+            $container->get(OrganizationMemberRepository::class),
+            $container->get(VehicleStatsService::class),
+            new PushDispatcher([$notifier], $container->get(PushSubscriptionRepository::class), $this->em, new SpyLogger()),
+            new AppMailer($mailer, new SpyLogger(), 'smtp://localhost'),
+            $container->get(MailBuilder::class),
+            $this->em,
+            new SpyLogger(),
+            $container->get(AppClock::class),
+        );
+    }
+
+    private static function failingMailer(): MailerInterface
+    {
+        return new class implements MailerInterface {
+            public function send(RawMessage $message, ?Envelope $envelope = null): void
+            {
+                throw new TransportException('SMTP down');
+            }
+        };
+    }
+
+    /** @param \ArrayObject<int, PushPayload>|null $sent raccoglie i payload consegnati al notifier */
+    private static function pushNotifier(PushDeliveryResult $result, ?\ArrayObject $sent = null): PushNotifierInterface
+    {
+        return new class($result, $sent) implements PushNotifierInterface {
+            /** @param \ArrayObject<int, PushPayload>|null $sent */
+            public function __construct(private readonly PushDeliveryResult $result, private readonly ?\ArrayObject $sent)
+            {
+            }
+
+            public function supportedPlatforms(): array
+            {
+                return [PushPlatform::WEB];
+            }
+
+            public function send(PushSubscription $subscription, PushPayload $payload): PushDeliveryResult
+            {
+                $this->sent?->append($payload);
+
+                return $this->result;
+            }
+        };
+    }
+
+    /**
+     * @return array{0: Vehicle, 1: Organization, 2: User}
+     */
+    private function vehicleWithOwnerAndDevice(string $email): array
+    {
+        [$vehicle, $org] = $this->vehicleWithOwner($email);
+        $owner = $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
+        self::assertInstanceOf(User::class, $owner);
+        $this->em->persist(
+            (new PushSubscription())
+                ->setUser($owner)
+                ->setPlatform(PushPlatform::WEB)
+                ->setEndpoint('https://push.example.com/'.bin2hex(random_bytes(4)))
+                ->setP256dh('p256dh-key')
+                ->setAuthSecret('auth-secret'),
+        );
+        $this->em->flush();
+
+        return [$vehicle, $org, $owner];
     }
 
     /**

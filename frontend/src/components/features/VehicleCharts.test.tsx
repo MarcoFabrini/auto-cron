@@ -73,10 +73,10 @@ describe('VehicleCharts', () => {
     renderCharts({ id: 1, ownership: 'owned', archivedAt: null });
 
     expect(await screen.findByRole('heading', { name: 'Grafici del veicolo' })).toBeInTheDocument();
-    expect(await screen.findByText('Spese mensili')).toBeInTheDocument();
-    expect(screen.getByText('Spese per categoria')).toBeInTheDocument();
-    expect(screen.getByText('Km percorsi')).toBeInTheDocument();
-    expect(screen.getByText('Consumo medio (km/l)')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Spese mensili' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Spese per categoria' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Km percorsi' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Consumo medio (km/l)' })).toBeInTheDocument();
     expect(mockedAuthFetch).toHaveBeenCalledWith('/api/vehicles/1/charts?months=12');
   });
 
@@ -93,7 +93,7 @@ describe('VehicleCharts', () => {
     stubApi([listed(1, 'owned'), listed(7, 'shared')]);
     renderCharts({ id: 7, ownership: 'shared', archivedAt: null });
 
-    expect(await screen.findByText('Spese mensili')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Spese mensili' })).toBeInTheDocument();
     expect(mockedAuthFetch).toHaveBeenCalledWith('/api/vehicles/7/charts?months=12');
   });
 
@@ -101,7 +101,7 @@ describe('VehicleCharts', () => {
     stubApi([]);
     renderCharts({ id: 3, ownership: 'owned', archivedAt: '2026-09-01T10:00:00+02:00' });
 
-    expect(await screen.findByText('Spese mensili')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Spese mensili' })).toBeInTheDocument();
     expect(mockedAuthFetch).toHaveBeenCalledWith('/api/vehicles/3/charts?months=12');
   });
 

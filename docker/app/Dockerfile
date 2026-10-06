@@ -82,6 +82,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # composer.json serve a runtime (Symfony ricava da lì la root del progetto), composer no.
 COPY composer.json composer.lock ./
 COPY --from=vendor /app/vendor/ vendor/
+# Script di Scalar (/api/doc) serviti dalla stessa origine (script-src 'self'). Il build di composer gira con
+# --no-scripts, quindi assets:install non c'è: si copia direttamente il file che serve alla UI, dove
+# nelmio_api_doc (assets_mode: bundle) lo cerca. Il Caddyfile lo espone con `handle /bundles/*`.
+COPY --from=vendor /app/vendor/nelmio/api-doc-bundle/public/scalar/ public/bundles/nelmioapidoc/scalar/
 
 COPY bin/ bin/
 COPY config/ config/

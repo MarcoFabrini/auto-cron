@@ -30,6 +30,7 @@ export function RefuelingListPage() {
     <div className="space-y-6">
       <PageHeader
         title={vehicleId > 0 ? vehicleName : undefined}
+        srTitle={t('nav.refueling')}
         onBack={vehicleId > 0 ? () => navigate(`/vehicles/${vehicleId}`) : undefined}
         action={
           vehicleId > 0 && canEdit && (

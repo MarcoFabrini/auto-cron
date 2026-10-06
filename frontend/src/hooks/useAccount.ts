@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import i18n from '@/i18n';
 import { authFetch } from '@/api/client';
+import { switchOrganization } from '@/api/endpoints/auth';
+import { profileLocale } from '@/lib/format';
 import { useAuthStore, type User } from '@/stores/useAuthStore';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -160,13 +163,10 @@ export function useAcceptInvitation() {
       // accettata, altrimenti l'utente non vedrebbe mai i dati per cui è stato invitato.
       if (res?.organizationId) {
         try {
-          const switched = await authFetch<{ access_token: string }>('/api/auth/switch-org', {
-            method: 'POST',
-            headers: JSON_HEADERS,
-            body: JSON.stringify({ organizationId: res.organizationId }),
-          });
-          useAuthStore.getState().setAccessToken(switched.access_token);
-          qc.clear(); // la cache appartiene alla vecchia organizzazione
+          useAuthStore.getState().setAccessToken(await switchOrganization(res.organizationId));
+          // La cache appartiene alla vecchia organizzazione. L'anteprima dell'invito resta: la pagina
+          // è ancora iscritta a quella chiave e, ora che l'invito è consumato, un refetch darebbe 400.
+          qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'invitation' });
         } catch {
           // L'invito è accettato comunque: l'utente può cambiare organizzazione in seguito.
         }
@@ -195,7 +195,8 @@ export function useRegisterInvited() {
       const data = await authFetch<{ access_token: string }>('/api/auth/invitation/register', {
         method: 'POST',
         headers: JSON_HEADERS,
-        body: JSON.stringify({ locale: 'it', ...payload }),
+        // Lingua dell'interfaccia, non 'it' fisso: altrimenti chi si registra in inglese si ritrova in italiano.
+        body: JSON.stringify({ locale: profileLocale(i18n.language), ...payload }),
         skipRefresh: true,
       });
       useAuthStore.getState().setAccessToken(data.access_token);

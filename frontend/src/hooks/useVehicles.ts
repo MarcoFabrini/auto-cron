@@ -7,6 +7,7 @@ import {
   getVehicle,
   getVehicleCharts,
   getVehicleStats,
+  listArchivedVehicles,
   listVehicles,
   updateVehicle,
 } from '@/api/endpoints/vehicles';
@@ -19,6 +20,12 @@ import { DASHBOARD_CHART_MONTHS, dashboardKeys } from '@/hooks/useDashboardChart
 export const vehicleKeys = {
   all: ['vehicles'] as const,
   lists: () => [...vehicleKeys.all, 'list'] as const,
+  /**
+   * Archiviati: figlia di `lists()`, quindi le invalidazioni della lista (crea, modifica, archivia,
+   * ripristina, elimina) la coprono per prefisso, ma con chiave diversa da quella di `useVehicles()`
+   * (che usa esattamente `lists()`): selettori, aggiunta rapida e dashboard restano sugli attivi.
+   */
+  archivedList: () => [...vehicleKeys.lists(), 'archived'] as const,
   details: () => [...vehicleKeys.all, 'detail'] as const,
   detail: (id: number) => [...vehicleKeys.details(), id] as const,
 };
@@ -27,6 +34,14 @@ export function useVehicles() {
   return useQuery({
     queryKey: vehicleKeys.lists(),
     queryFn: listVehicles,
+  });
+}
+
+/** Veicoli archiviati accessibili all'utente: per la sezione "archiviati" della lista, da cui si ripristinano. */
+export function useArchivedVehicles() {
+  return useQuery({
+    queryKey: vehicleKeys.archivedList(),
+    queryFn: listArchivedVehicles,
   });
 }
 
@@ -142,8 +157,10 @@ export function useUnarchiveVehicle() {
     onSuccess: (_data, id) => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
-      // I grafici escludono gli archiviati.
+      // I grafici e le scadenze in arrivo escludono gli archiviati. Radice letterale come in
+      // useDeleteVehicle, per non importare useReminders (import circolare).
       void qc.invalidateQueries({ queryKey: dashboardKeys.all });
+      void qc.invalidateQueries({ queryKey: ['reminders'] });
     },
   });
 }
@@ -155,8 +172,10 @@ export function useArchiveVehicle() {
     onSuccess: (_data, id) => {
       void qc.invalidateQueries({ queryKey: vehicleKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: vehicleKeys.lists() });
-      // I grafici escludono gli archiviati.
+      // I grafici e le scadenze in arrivo escludono gli archiviati. Radice letterale come in
+      // useDeleteVehicle, per non importare useReminders (import circolare).
       void qc.invalidateQueries({ queryKey: dashboardKeys.all });
+      void qc.invalidateQueries({ queryKey: ['reminders'] });
     },
   });
 }

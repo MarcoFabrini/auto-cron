@@ -29,8 +29,10 @@ use App\Repository\OrganizationRepository;
 use App\Repository\PasswordResetTokenRepository;
 use App\Repository\UserRepository;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AfterResponseTasks;
 use App\Service\AppMailer;
 use App\Service\MailBuilder;
+use App\Service\RefreshRejection;
 use App\Service\RefreshTokenService;
 use App\Service\Storage\AttachmentStorageInterface;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -50,6 +52,7 @@ use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Mime\MimeTypes;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
@@ -93,6 +96,8 @@ final class AuthController extends AbstractController
         private readonly RateLimiterFactory $tokenActionsLimiter,
         private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $forgotPasswordLimiter,
+        private readonly RateLimiterFactoryInterface $forgotPasswordIpLimiter,
+        private readonly AfterResponseTasks $afterResponse,
         private readonly LoggerInterface $logger,
         private readonly AttachmentStorageInterface $storage,
         private readonly ActiveOrganizationResolver $activeOrganization,
@@ -163,7 +168,7 @@ final class AuthController extends AbstractController
             // Validazione completa (UniqueEntity etc.)
             $errors = $this->validator->validate($user);
             if (count($errors) > 0) {
-                return $this->validationErrorResponse($errors);
+                return $this->validationProblem($errors);
             }
 
             try {
@@ -244,7 +249,7 @@ final class AuthController extends AbstractController
 
     #[OA\Post(
         summary: 'Rotate access + refresh token',
-        description: 'Web reads cookie. Mobile sends refresh in body. Old refresh is revoked. Rate limited (30/min per IP).',
+        description: 'Web reads cookie. Mobile sends refresh in body. Old refresh is revoked and the new one stays in the same session family. Presenting an already-rotated token again (after a 10 second grace for concurrent requests) revokes the whole family: the answer is the same 401 auth.invalid_refresh_token. Rate limited (30/min per IP).',
         security: [],
         requestBody: new OA\RequestBody(
             required: false,
@@ -280,9 +285,13 @@ final class AuthController extends AbstractController
 
         $refresh = $this->refreshTokens->findValid($rawToken);
         if (!$refresh) {
+            // Stessa risposta per token sconosciuto, scaduto, ruotato da poco o riusato: il client non
+            // deve poter capire se ha fatto scattare la revoca della sessione.
+            $rejection = $this->refreshTokens->classifyRejected($rawToken);
             $response = $this->problem('auth.invalid_refresh_token', 401);
-            // Se era un cookie invalido, lo cancelliamo
-            if ($cookieToken !== null) {
+            // Se era un cookie invalido, lo cancelliamo. Non se ha perso una corsa con un'altra richiesta
+            // (due schede): quella ha appena consegnato il cookie nuovo e cancellarlo scollegherebbe l'utente.
+            if ($cookieToken !== null && $rejection !== RefreshRejection::RaceLost) {
                 $response->headers->clearCookie(RefreshTokenService::COOKIE_NAME, '/api/auth');
             }
             return $response;
@@ -438,7 +447,7 @@ final class AuthController extends AbstractController
 
         $errors = $this->validator->validate($user);
         if (count($errors) > 0) {
-            return $this->validationErrorResponse($errors);
+            return $this->validationProblem($errors);
         }
 
         try {
@@ -478,7 +487,7 @@ final class AuthController extends AbstractController
 
     #[OA\Put(
         summary: 'Change current user password',
-        description: 'Verifies currentPassword, then sets newPassword. Revokes all refresh tokens (logs out other devices) and issues a fresh session for the current client.',
+        description: 'Verifies currentPassword, then sets newPassword. Revokes all refresh tokens (logs out other devices) and issues a fresh session for the current client, keeping the active organization.',
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(ref: new Model(type: ChangePasswordRequest::class)),
@@ -505,10 +514,16 @@ final class AuthController extends AbstractController
         $user->setPassword($this->passwordHasher->hashPassword($user, $payload->newPassword));
         $this->em->flush();
 
-        // Sicurezza: invalida tutte le sessioni esistenti, poi riapri quella corrente.
+        // Sicurezza: invalida tutte le sessioni esistenti, poi riapri quella corrente
+        // mantenendone l'org attiva (altrimenti si ricadrebbe sulla prima membership).
+        $activeOrgId = $this->activeOrganization->tryResolve()?->getId();
         $this->refreshTokens->revokeAllForUser($user);
 
-        return $this->buildAuthResponse($user, $this->resolveClientType($request));
+        return $this->buildAuthResponse(
+            $user,
+            $this->resolveClientType($request),
+            existingRefresh: $this->refreshTokens->issue($user, $activeOrgId),
+        );
     }
 
     #[OA\Post(
@@ -625,24 +640,37 @@ final class AuthController extends AbstractController
 
     #[OA\Post(
         summary: 'Request a password reset email',
-        description: 'Always returns 200 (no user enumeration). If the email exists, sends a reset link valid 1h.',
+        description: 'Always returns 200 (no user enumeration). If the email exists, sends a reset link valid 1h; the email is sent after the response so timing does not reveal whether the account exists. Rate limited per (email, IP) and per IP (429 auth.too_many_attempts).',
         security: [],
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(ref: new Model(type: ForgotPasswordRequest::class)),
         ),
-        responses: [new OA\Response(response: 200, description: 'Email sent if account exists')],
+        responses: [
+            new OA\Response(response: 200, description: 'Email sent if account exists'),
+            new OA\Response(response: 429, description: 'auth.too_many_attempts'),
+        ],
     )]
     #[Route('/forgot-password', name: 'forgot_password', methods: ['POST'])]
     public function forgotPassword(
         Request $request,
         #[MapRequestPayload] ForgotPasswordRequest $payload,
     ): JsonResponse {
+        // Per IP: il limite per (email, IP) da solo lascia 3 mail per ogni indirizzo, quindi un solo IP potrebbe
+        // far partire mail verso un numero illimitato di caselle (mail bombing).
+        if ($this->throttled($this->forgotPasswordIpLimiter)) {
+            return $this->problem('auth.too_many_attempts', 429);
+        }
+
         $limiter = $this->forgotPasswordLimiter->create('forgot-'.strtolower($payload->email).'-'.$request->getClientIp());
         if (!$limiter->consume()->isAccepted()) {
             return $this->problem('auth.too_many_attempts', 429);
         }
 
+        // Account esistente e inesistente devono costare circa lo stesso sul percorso della risposta, altrimenti
+        // i tempi rivelano quali email sono registrate. Il token si scrive subito (serve a un reset immediato),
+        // mentre la parte lenta (costruzione e invio SMTP) gira dopo la risposta. Differenza residua: l'UPDATE
+        // che invalida i token precedenti e l'INSERT del nuovo, pochi millisecondi di DB.
         $user = $this->userRepo->findOneByEmail($payload->email);
         if ($user) {
             // Un solo token attivo per utente: invalida i precedenti.
@@ -657,16 +685,12 @@ final class AuthController extends AbstractController
             $this->em->persist($resetToken);
             $this->em->flush();
 
-            // Il fallimento SMTP non deve diventare un 500: il client riceve comunque
-            // 200 (no enumeration) e può ritentare; il token verrà invalidato dal prossimo forgot.
-            try {
-                $this->mailer->send($this->mailBuilder->resetPassword($user, $rawToken)->to($user->getEmail()));
-            } catch (\Throwable $e) {
-                $this->logger->error('Password reset email failed', [
-                    'user_id' => $user->getId(),
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            // Il fallimento SMTP non diventa un 500 (la risposta è già partita): AfterResponseTasks lo logga e
+            // il client può ritentare; il token verrà invalidato dal prossimo forgot.
+            $this->afterResponse->defer(
+                fn () => $this->mailer->send($this->mailBuilder->resetPassword($user, $rawToken)->to($user->getEmail())),
+                ['event' => 'password_reset_email', 'user_id' => $user->getId()],
+            );
         }
 
         return $this->json(['status' => 'ok']);
@@ -886,7 +910,7 @@ final class AuthController extends AbstractController
 
         $errors = $this->validator->validate($user);
         if (count($errors) > 0) {
-            return $this->validationErrorResponse($errors);
+            return $this->validationProblem($errors);
         }
 
         // Niente org personale: l'invitato ENTRA nell'organizzazione che lo ha
@@ -1044,7 +1068,7 @@ final class AuthController extends AbstractController
     }
 
     /** Consuma un tentativo per l'IP del client; true se con questo il limite è superato. */
-    private function throttled(RateLimiterFactory $factory): bool
+    private function throttled(RateLimiterFactoryInterface $factory): bool
     {
         $ip = $this->requestStack->getCurrentRequest()?->getClientIp() ?? 'unknown';
 
@@ -1075,20 +1099,5 @@ final class AuthController extends AbstractController
             $suffix++;
         }
         return $candidate;
-    }
-
-    private function validationErrorResponse(\Symfony\Component\Validator\ConstraintViolationListInterface $errors): JsonResponse
-    {
-        $details = [];
-        foreach ($errors as $error) {
-            $details[] = [
-                'field' => $error->getPropertyPath(),
-                'message' => $error->getMessage(),
-            ];
-        }
-        return $this->json(
-            ['type' => 'about:blank', 'title' => 'validation_failed', 'status' => 422, 'errors' => $details],
-            422,
-        );
     }
 }

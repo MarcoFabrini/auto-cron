@@ -18,7 +18,7 @@ final class RefuelingRequest
         #[Assert\Date]
         public string $refueledAt = '',
 
-        #[Assert\Range(min: 0, max: 9_999_999)]
+        #[Assert\Range(min: 0, max: 9_999_999, notInRangeMessage: 'common.km_too_large')]
         public int $km = 0,
 
         #[DecimalString(maxDecimals: 3, maxIntegerDigits: 5, message: 'validation.liters_format')]

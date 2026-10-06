@@ -19,10 +19,11 @@ import { useDeleteRefueling, useRefueling } from '@/hooks/useRefuelings';
 import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
-import { formatCurrency, formatDate, formatDecimal, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export function RefuelingDetailPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { id } = useParams<{ id: string }>();
   const refuelingId = Number(id);
   const navigate = useNavigate();
@@ -52,9 +53,9 @@ export function RefuelingDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={t('refueling.detail_title', {
-          liters: formatDecimal(litersNum, 2),
+          liters: fmt.decimal(litersNum, 2),
         })}
-        description={formatDate(data.refueledAt)}
+        description={fmt.date(data.refueledAt)}
         onBack={() => navigate(`/refueling?vehicleId=${data.vehicleId}`)}
         action={
           canEdit ? (
@@ -89,19 +90,19 @@ export function RefuelingDetailPage() {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-muted-foreground">{t('refueling.km')}</dt>
-              <dd className="font-medium">{formatKm(data.km)}</dd>
+              <dd className="font-medium">{fmt.km(data.km)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('refueling.liters')}</dt>
-              <dd className="font-medium">{formatDecimal(litersNum, 2)} L</dd>
+              <dd className="font-medium">{fmt.decimal(litersNum, 2)} L</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('refueling.price_per_liter')}</dt>
-              <dd className="font-medium">{formatCurrency(data.pricePerLiter)}</dd>
+              <dd className="font-medium">{fmt.currency(data.pricePerLiter)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('refueling.total_cost')}</dt>
-              <dd className="font-medium">{formatCurrency(data.totalCost)}</dd>
+              <dd className="font-medium">{fmt.currency(data.totalCost)}</dd>
             </div>
             {data.station && (
               <div className="col-span-2">

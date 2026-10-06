@@ -12,15 +12,17 @@ import type { Vehicle } from '@/api/types/vehicle';
 export interface VehiclePickerProps {
   vehicles: Vehicle[];
   onSelect: (vehicleId: number) => void;
+  /** Omette il titolo "Scegli un veicolo" quando il contenitore ne ha già uno (es. il titolo del foglio di aggiunta rapida). */
+  hideHeading?: boolean;
 }
 
-export function VehiclePicker({ vehicles, onSelect }: VehiclePickerProps) {
+export function VehiclePicker({ vehicles, onSelect, hideHeading = false }: VehiclePickerProps) {
   const { t } = useTranslation();
 
   return (
     <div className="space-y-3">
-      <Heading level={3}>{t('vehicle_picker.title')}</Heading>
-      <div className="grid gap-3 sm:grid-cols-2">
+      {!hideHeading && <Heading level={3}>{t('vehicle_picker.title')}</Heading>}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {vehicles.map((v) => (
           <button
             key={v.id}

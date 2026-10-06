@@ -55,7 +55,8 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* Senza descrizione niente aria-describedby: il titolo basta e Radix non logga il warning. */}
+      <DialogContent {...(description ? {} : { 'aria-describedby': undefined })}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

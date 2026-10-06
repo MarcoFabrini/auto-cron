@@ -15,6 +15,11 @@ use App\Repository\OrganizationRepository;
 use App\Repository\PasswordResetTokenRepository;
 use App\Repository\UserRepository;
 use App\Tests\Factory\OrganizationFactory;
+use App\Tests\Factory\OrganizationMemberFactory;
+use App\Tests\Factory\VehicleFactory;
+use App\Tests\Factory\VehicleShareFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use App\Service\RefreshTokenService;
 use App\Tests\Factory\UserFactory;
 use App\Tests\Support\ApiTestCase;
@@ -439,6 +444,79 @@ final class AuthControllerTest extends ApiTestCase
         // La vecchia non più
         $this->jsonRequest('POST', '/api/auth/login', ['email' => $email, 'password' => UserFactory::DEFAULT_PASSWORD]);
         self::assertResponseStatusCodeSame(401);
+    }
+
+    public function testChangePasswordKeepsTheActiveOrganization(): void
+    {
+        [$user, $orgA] = $this->createAuthenticatedUser();
+        $orgA->setName('Alpha');
+        static::getContainer()->get(EntityManagerInterface::class)->flush();
+        $orgB = OrganizationFactory::createOne(['name' => 'Zeta']);
+        OrganizationMemberFactory::createOne(['organization' => $orgB, 'user' => $user, 'role' => OrgRole::OWNER]);
+        $inB = VehicleFactory::createOne(['organization' => $orgB, 'name' => 'Auto di Zeta']);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $inB, 'user' => $user]);
+
+        // Sessione reale: il login cade sulla prima org (Alpha), poi si passa a Zeta e la si ricorda sul refresh
+        $this->jsonRequest('POST', '/api/auth/login', ['email' => $user->getEmail(), 'password' => UserFactory::DEFAULT_PASSWORD]);
+        $login = $this->jsonBody();
+        self::assertSame($orgA->getId(), $this->activeOrgIdOf($login['access_token']));
+        $this->jsonRequest('POST', '/api/auth/switch-org', [
+            'organizationId' => $orgB->getId(),
+            'refreshToken' => $login['refresh_token'],
+        ], accessToken: $login['access_token']);
+        $switched = $this->jsonBody()['access_token'];
+        self::assertSame($orgB->getId(), $this->activeOrgIdOf($switched));
+
+        $this->jsonRequest('PUT', '/api/auth/password', [
+            'currentPassword' => UserFactory::DEFAULT_PASSWORD,
+            'newPassword' => 'nuovapw123',
+        ], accessToken: $switched);
+
+        self::assertResponseIsSuccessful();
+        $body = $this->jsonBody();
+        self::assertSame($orgB->getId(), $this->activeOrgIdOf($body['access_token']), 'Il cambio password non deve riportare alla prima org');
+
+        // L'app resta operativa nell'org scelta, anche dopo un refresh con il nuovo refresh token
+        $this->jsonRequest('GET', '/api/vehicles', accessToken: $body['access_token']);
+        self::assertSame(['Auto di Zeta'], array_column($this->jsonBody(), 'name'));
+        $this->jsonRequest('POST', '/api/auth/refresh', ['refreshToken' => $body['refresh_token']]);
+        self::assertSame($orgB->getId(), $this->activeOrgIdOf($this->jsonBody()['access_token']));
+    }
+
+    public function testEmailChangeKeepsTheActiveOrganization(): void
+    {
+        [$user, $orgA] = $this->createAuthenticatedUser();
+        $orgA->setName('Alpha');
+        static::getContainer()->get(EntityManagerInterface::class)->flush();
+        $orgB = OrganizationFactory::createOne(['name' => 'Zeta']);
+        OrganizationMemberFactory::createOne(['organization' => $orgB, 'user' => $user, 'role' => OrgRole::OWNER]);
+        $token = static::getContainer()->get(JWTTokenManagerInterface::class)->createFromPayload($user, [
+            'user_id' => $user->getId(),
+            'active_org_id' => $orgB->getId(),
+        ]);
+
+        $this->jsonRequest('PUT', '/api/auth/profile', [
+            'firstName' => 'Mario',
+            'lastName' => 'Rossi',
+            'email' => 'nuova-mail@test.it',
+            'locale' => 'it',
+            'currentPassword' => UserFactory::DEFAULT_PASSWORD,
+        ], accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        $body = $this->jsonBody();
+        self::assertSame($orgB->getId(), $this->activeOrgIdOf($body['access_token']));
+        $this->jsonRequest('POST', '/api/auth/refresh', ['refreshToken' => $body['refresh_token']]);
+        self::assertSame($orgB->getId(), $this->activeOrgIdOf($this->jsonBody()['access_token']));
+    }
+
+    /** Claim `active_org_id` del JWT (decodifica del payload, senza verificare la firma). */
+    private function activeOrgIdOf(string $jwt): mixed
+    {
+        $parts = explode('.', $jwt);
+        $payload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true, flags: \JSON_THROW_ON_ERROR);
+
+        return $payload['active_org_id'] ?? null;
     }
 
     public function testChangePasswordWithWrongCurrentReturns400(): void
@@ -1004,6 +1082,93 @@ final class AuthControllerTest extends ApiTestCase
             'password' => 'password123',
         ]);
         self::assertResponseStatusCodeSame(409);
+    }
+
+    // -------------------- inviter must still be able to invite --------------------
+
+    /**
+     * Invito spedito da $inviter (membro con $inviterRole, o nessuna membership se null) per $email.
+     *
+     * @return array{0: \App\Entity\Organization, 1: string, 2: User}
+     */
+    private function seedInvitationBy(?OrgRole $inviterRole, string $email, OrgRole $role = OrgRole::MEMBER, bool $accepted = true): array
+    {
+        $org = OrganizationFactory::createOne();
+        $inviter = UserFactory::createOne();
+        if ($inviterRole !== null) {
+            OrganizationMemberFactory::createOne([
+                'user' => $inviter, 'organization' => $org, 'role' => $inviterRole,
+                'acceptedAt' => $accepted ? new \DateTimeImmutable() : null,
+            ]);
+        }
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $raw = bin2hex(random_bytes(32));
+        $em->persist(new OrganizationInvitation($org, mb_strtolower($email), $role, hash('sha256', $raw), (new \DateTimeImmutable())->modify('+7 days'), $inviter));
+        $em->flush();
+
+        return [$org, $raw, $inviter];
+    }
+
+    /** @return iterable<string, array{0: OrgRole|null, 1: bool}> inviter non più abilitato: ruolo (null = non è più membro) e accettazione */
+    public static function disabledInviters(): iterable
+    {
+        yield 'removed from the org' => [null, true];
+        yield 'demoted to member' => [OrgRole::MEMBER, true];
+        yield 'membership not accepted' => [OrgRole::ADMIN, false];
+    }
+
+    #[DataProvider('disabledInviters')]
+    public function testInvitationIsInvalidWhenInviterCannotInviteAnymore(?OrgRole $inviterRole, bool $accepted): void
+    {
+        [, $raw] = $this->seedInvitationBy($inviterRole, 'late@test.it', OrgRole::ADMIN, $accepted);
+
+        // Preview
+        $this->jsonRequest('GET', '/api/auth/invitation/'.$raw);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('invitation.invalid', $this->jsonBody()['title']);
+
+        // Registrazione dell'invitato
+        $this->jsonRequest('POST', '/api/auth/invitation/register', [
+            'token' => $raw, 'firstName' => 'Late', 'lastName' => 'Guest', 'password' => 'password123',
+        ]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('invitation.invalid', $this->jsonBody()['title']);
+        self::assertNull(static::getContainer()->get(UserRepository::class)->findOneByEmail('late@test.it'), 'Nessun account creato');
+
+        // Accettazione da utente già registrato
+        $late = UserFactory::createOne(['email' => 'late@test.it']);
+        $this->jsonRequest('POST', '/api/auth/invitation/accept', ['token' => $raw], accessToken: $this->tokenFor($late));
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('invitation.invalid', $this->jsonBody()['title']);
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->clear();
+        self::assertSame([], static::getContainer()->get(OrganizationMemberRepository::class)->findAllForUser($late));
+    }
+
+    public function testInvitationFromOwnerOrAdminInviterStillWorksEverywhere(): void
+    {
+        foreach ([OrgRole::OWNER, OrgRole::ADMIN] as $i => $inviterRole) {
+            [$org, $raw] = $this->seedInvitationBy($inviterRole, "fine$i@test.it");
+            $this->jsonRequest('GET', '/api/auth/invitation/'.$raw);
+            self::assertResponseIsSuccessful();
+            self::assertSame("fine$i@test.it", $this->jsonBody()['email']);
+
+            $existing = UserFactory::createOne(['email' => "fine$i@test.it"]);
+            $this->jsonRequest('POST', '/api/auth/invitation/accept', ['token' => $raw], accessToken: $this->tokenFor($existing));
+            self::assertResponseStatusCodeSame(200);
+            self::assertSame($org->getId(), $this->jsonBody()['organizationId']);
+        }
+
+        [, $raw] = $this->seedInvitationBy(OrgRole::ADMIN, 'newcomer@test.it');
+        $this->jsonRequest('POST', '/api/auth/invitation/register', [
+            'token' => $raw, 'firstName' => 'New', 'lastName' => 'Comer', 'password' => 'password123',
+        ]);
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    private function tokenFor(User $user): string
+    {
+        return static::getContainer()->get(JWTTokenManagerInterface::class)->createFromPayload($user, ['user_id' => $user->getId()]);
     }
 
     // -------------------- helpers --------------------

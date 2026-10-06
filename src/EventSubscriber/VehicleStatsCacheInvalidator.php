@@ -10,6 +10,7 @@ use App\Entity\Refueling;
 use App\Entity\Vehicle;
 use App\Service\VehicleStatsService;
 use Doctrine\Bundle\DoctrineBundle\Attribute\AsDoctrineListener;
+use Doctrine\ORM\Event\OnClearEventArgs;
 use Doctrine\ORM\Event\OnFlushEventArgs;
 use Doctrine\ORM\Event\PostFlushEventArgs;
 use Doctrine\ORM\Events;
@@ -18,9 +19,13 @@ use Doctrine\ORM\Events;
  * Le statistiche del veicolo sono in cache (5 minuti): ogni scrittura che le alimenta — rifornimenti,
  * manutenzioni, spese e il veicolo stesso (km iniziali, carburanti) — la invalida subito, così una
  * modifica si vede al prossimo caricamento invece che dopo la scadenza.
+ *
+ * Come AuditSubscriber, raccoglie per UN flush: ogni onFlush riparte da zero e onClear svuota, così
+ * un flush fallito (niente postFlush) non lascia id che un worker longevo invaliderebbe al flush dopo.
  */
 #[AsDoctrineListener(event: Events::onFlush)]
 #[AsDoctrineListener(event: Events::postFlush)]
+#[AsDoctrineListener(event: Events::onClear)]
 final class VehicleStatsCacheInvalidator
 {
     /** @var array<int, true> */
@@ -30,8 +35,14 @@ final class VehicleStatsCacheInvalidator
     {
     }
 
+    public function onClear(OnClearEventArgs $args): void
+    {
+        $this->vehicleIds = [];
+    }
+
     public function onFlush(OnFlushEventArgs $args): void
     {
+        $this->vehicleIds = [];
         $uow = $args->getObjectManager()->getUnitOfWork();
 
         foreach ([$uow->getScheduledEntityInsertions(), $uow->getScheduledEntityUpdates(), $uow->getScheduledEntityDeletions()] as $entities) {

@@ -53,7 +53,7 @@ class Vehicle
     private string $model;
 
     #[ORM\Column(type: 'smallint')]
-    #[Assert\Range(min: 1900, max: 2100)]
+    #[Assert\Range(min: 1900, max: 2100, notInRangeMessage: 'vehicle.year.out_of_range')]
     #[Groups(['vehicle:read', 'vehicle:list', 'vehicle:write'])]
     private int $year;
 
@@ -98,7 +98,7 @@ class Vehicle
     private ?string $notes = null;
 
     #[ORM\Column(name: 'archived_at', type: 'datetime_immutable', nullable: true)]
-    #[Groups(['vehicle:read'])]
+    #[Groups(['vehicle:read', 'vehicle:list'])]
     private ?\DateTimeImmutable $archivedAt = null;
 
     /**

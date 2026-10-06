@@ -21,6 +21,8 @@ export interface ToasterToast {
   description?: ReactNode;
   action?: ToastActionElement;
   open?: boolean;
+  /** ms prima della chiusura automatica (default Radix: 5 s) */
+  duration?: number;
   variant?: ToastVariant;
   onOpenChange?: (open: boolean) => void;
 }

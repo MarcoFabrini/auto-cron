@@ -8,7 +8,7 @@ import { QuickAddSheet } from '@/components/features';
 /**
  * BottomNav — bottom tab bar fissa mobile. Nascosta su desktop (md+).
  * 3 slot: Home (sx) · pulsante "+" centrale rialzato (hub aggiunte) · Promemoria (dx).
- * `pb-safe` accomoda l'home indicator iPhone in PWA standalone.
+ * `pb-safe-nav` accomoda l'home indicator iPhone in PWA standalone.
  */
 export function BottomNav() {
   const { t } = useTranslation();
@@ -20,8 +20,8 @@ export function BottomNav() {
   return (
     <>
       <nav
-        aria-label="Primary mobile"
-        className="fixed bottom-0 left-0 right-0 z-20 flex items-center border-t bg-card pb-safe md:hidden"
+        aria-label={t('nav.primary_mobile')}
+        className="fixed bottom-0 left-0 right-0 z-20 flex items-center border-t bg-card pb-safe-nav md:hidden"
       >
         {home && <NavItem {...home} orientation="horizontal" />}
 

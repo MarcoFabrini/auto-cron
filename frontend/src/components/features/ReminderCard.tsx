@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Bell } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui';
 import { ReminderBadge } from './ReminderBadge';
-import { formatDate, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 import { useVehicleName } from '@/hooks/useVehicleName';
 import type { Reminder } from '@/api/types/reminder';
 
@@ -15,6 +15,7 @@ export interface ReminderCardProps {
 
 export function ReminderCard({ reminder, showVehicleName }: ReminderCardProps) {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const r = reminder;
   const vehicleName = useVehicleName(r.vehicleId);
 
@@ -38,9 +39,9 @@ export function ReminderCard({ reminder, showVehicleName }: ReminderCardProps) {
             )}
             <p className="line-clamp-2 text-sm text-muted-foreground">{r.description}</p>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {r.dueDate && <span>{formatDate(r.dueDate)}</span>}
-              {r.dueDate && r.dueKm && <span>·</span>}
-              {r.dueKm && <span>{formatKm(r.dueKm)}</span>}
+              {r.dueDate && <span>{fmt.date(r.dueDate)}</span>}
+              {r.dueDate && r.dueKm != null && <span>·</span>}
+              {r.dueKm != null && <span>{fmt.km(r.dueKm)}</span>}
             </div>
           </div>
         </CardContent>

@@ -84,7 +84,7 @@ final class ExpenseController extends AbstractController
 
     #[OA\Post(
         summary: 'Create expense entry',
-        description: 'Recurring expense uses recurringPeriod (weekly/monthly/quarterly/semiannual/yearly/biennial).',
+        description: 'Recurring expense uses recurringPeriod (weekly/monthly/quarterly/semiannual/yearly/biennial). occurredAt is the date of the FIRST charge; recurringUntil (Y-m-d, optional, inclusive, >= occurredAt) is the last possible charge date, null = still running. Every charge already due (date <= today and <= recurringUntil) is counted in total cost, cost per km and charts.',
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: ExpenseRequest::class))),
         responses: [
             new OA\Response(response: 201, description: 'Created', content: new OA\JsonContent(ref: new Model(type: Expense::class, groups: ['expense:read', 'vehicle:nested']))),
@@ -109,6 +109,7 @@ final class ExpenseController extends AbstractController
             ->setAmount($payload->amount)
             ->setRecurring($payload->recurring)
             ->setRecurringPeriod($payload->recurringPeriod)
+            ->setRecurringUntil(self::recurringUntil($payload))
             ->setNotes($payload->notes);
 
         $this->em->persist($e);
@@ -135,6 +136,7 @@ final class ExpenseController extends AbstractController
             ->setAmount($payload->amount)
             ->setRecurring($payload->recurring)
             ->setRecurringPeriod($payload->recurringPeriod)
+            ->setRecurringUntil(self::recurringUntil($payload))
             ->setNotes($payload->notes);
 
         $this->em->flush();
@@ -153,6 +155,16 @@ final class ExpenseController extends AbstractController
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $e);
         $this->attachmentCleaner->removeRecord($e);
         return new JsonResponse(null, 204);
+    }
+
+    /** Data di fine della ricorrenza: solo per le spese ricorrenti, vuota (null o stringa vuota) = ancora in corso. */
+    private static function recurringUntil(ExpenseRequest $payload): ?\DateTimeImmutable
+    {
+        if (!$payload->recurring || $payload->recurringUntil === null || $payload->recurringUntil === '') {
+            return null;
+        }
+
+        return new \DateTimeImmutable($payload->recurringUntil);
     }
 
     private function mustFind(int $id): Expense

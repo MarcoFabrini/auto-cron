@@ -38,11 +38,11 @@ export function FormField({ label, children, error, hint, required, className }:
     <div className={cn('space-y-2', className)}>
       <Label htmlFor={id}>
         {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
+        {required && <span className="ml-0.5 text-destructive-text">*</span>}
       </Label>
       {withDescription(children(id), messageId)}
       {error ? (
-        <p id={messageId} role="alert" className="text-sm font-medium text-destructive">
+        <p id={messageId} role="alert" className="text-sm font-medium text-destructive-text">
           {error}
         </p>
       ) : hint ? (

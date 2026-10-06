@@ -7,6 +7,7 @@ namespace App\Repository;
 use App\Entity\Organization;
 use App\Entity\Refueling;
 use App\Entity\Vehicle;
+use App\Enum\FuelType;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -38,5 +39,23 @@ class RefuelingRepository extends ServiceEntityRepository
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+    }
+
+    /**
+     * Carburanti usati dai rifornimenti del veicolo (senza duplicati).
+     *
+     * @return list<FuelType>
+     */
+    public function findUsedFuelTypes(Vehicle $vehicle): array
+    {
+        /** @var list<array{fuelType: FuelType}> $rows */
+        $rows = $this->createQueryBuilder('r')
+            ->select('DISTINCT r.fuelType AS fuelType')
+            ->where('r.vehicle = :vehicle')
+            ->setParameter('vehicle', $vehicle)
+            ->getQuery()
+            ->getResult();
+
+        return array_map(static fn (array $row): FuelType => $row['fuelType'], $rows);
     }
 }

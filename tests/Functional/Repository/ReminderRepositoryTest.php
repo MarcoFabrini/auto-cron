@@ -85,6 +85,39 @@ final class ReminderRepositoryTest extends KernelTestCase
         self::assertSame([$soonNotified->getId()], $this->candidateIds());
     }
 
+    public function testKeepsKmRemindersNotifiedOverdueAsCandidatesToRearmThem(): void
+    {
+        // I km possono scendere (refuso corretto): il job deve rivederli per riarmarli
+        $kmOverdue = ReminderFactory::createOne(['dueDate' => null, 'dueKm' => 100_000]);
+        $kmOverdue->markNotified(ReminderUrgency::OVERDUE);
+        $bothOverdue = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('-3 days'), 'dueKm' => 100_000]);
+        $bothOverdue->markNotified(ReminderUrgency::OVERDUE);
+        $dateOverdue = ReminderFactory::createOne(['dueDate' => new \DateTimeImmutable('-3 days'), 'dueKm' => null]);
+        $dateOverdue->markNotified(ReminderUrgency::OVERDUE);
+        static::getContainer()->get(EntityManagerInterface::class)->flush();
+
+        self::assertEqualsCanonicalizing([$kmOverdue->getId(), $bothOverdue->getId()], $this->candidateIds());
+    }
+
+    public function testRearmIsCompareAndSwapAndKeepsLastNotifiedAt(): void
+    {
+        $r = ReminderFactory::createOne(['dueDate' => null, 'dueKm' => 100_000]);
+        $r->markNotified(ReminderUrgency::OVERDUE);
+        $notifiedAt = $r->getLastNotifiedAt();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->flush();
+        $id = (int) $r->getId();
+
+        self::assertFalse($this->repo->rearmNotification($id, ReminderUrgency::SOON, null), 'livello diverso da quello atteso: nulla da fare');
+        self::assertTrue($this->repo->rearmNotification($id, ReminderUrgency::OVERDUE, ReminderUrgency::SOON));
+        self::assertFalse($this->repo->rearmNotification($id, ReminderUrgency::OVERDUE, null), 'già riarmato da un altro processo');
+
+        $em->clear();
+        $fresh = $em->find(Reminder::class, $id);
+        self::assertSame(ReminderUrgency::SOON, $fresh?->getNotifiedUrgency());
+        self::assertSame($notifiedAt?->format('Y-m-d H:i:s'), $fresh?->getLastNotifiedAt()?->format('Y-m-d H:i:s'));
+    }
+
     /**
      * N+1: il job legge il veicolo di ogni promemoria (nome, km attuali). Senza fetch-join ogni
      * accesso è una query (30 promemoria = 30 query extra). Verifica che il vehicle arrivi già

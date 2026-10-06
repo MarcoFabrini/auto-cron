@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, FormField, Heading, Input, Spinner, Text } from '@/components/ui';
 import { AuthLayout } from '@/components/layout';
-import { AuthBrand } from '@/components/features';
+import { AuthBrand, AuthLink } from '@/components/features';
 import { useResetPassword } from '@/hooks/useAccount';
 import { useToast } from '@/hooks/useToast';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
@@ -98,9 +98,7 @@ export function ResetPasswordPage() {
       </form>
 
       <Text variant="muted" className="text-center">
-        <Link to="/login" className="font-medium text-primary hover:underline">
-          {t('auth.forgot.back_to_login')}
-        </Link>
+        <AuthLink to="/login">{t('auth.forgot.back_to_login')}</AuthLink>
       </Text>
     </AuthLayout>
   );

@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
  *   <DropdownMenuContent align="end">
  *     <DropdownMenuItem onClick={...}>Modifica</DropdownMenuItem>
  *     <DropdownMenuSeparator />
- *     <DropdownMenuItem className="text-destructive">Elimina</DropdownMenuItem>
+ *     <DropdownMenuItem className="text-destructive-text">Elimina</DropdownMenuItem>
  *   </DropdownMenuContent>
  * </DropdownMenu>
  */

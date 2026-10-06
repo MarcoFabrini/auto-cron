@@ -41,7 +41,7 @@ function renderCard() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <VehicleShareCard vehicleId={7} currentUserId={OWNER_ID} />
+      <VehicleShareCard vehicleId={7} currentUserId={OWNER_ID} onAccessLost={vi.fn()} />
     </QueryClientProvider>,
   );
 }

@@ -61,12 +61,19 @@ final class GdprExportCommand extends Command
         $outputPath = $input->getOption('output');
         if ($outputPath !== null) {
             $dir = dirname((string) $outputPath);
-            if (!is_dir($dir) && !mkdir($dir, 0o755, true) && !is_dir($dir)) {
+            if (!is_dir($dir) && !mkdir($dir, 0o700, true) && !is_dir($dir)) {
                 $io->error(sprintf('Cannot create directory "%s"', $dir));
                 return Command::FAILURE;
             }
-            file_put_contents($outputPath, $json);
-            $bytes = strlen($json);
+            // L'export contiene dati personali: file leggibile solo dal proprietario (umask per non
+            // lasciarlo mai più aperto nemmeno un istante, chmod per un file già esistente).
+            $previousUmask = umask(0o077);
+            $bytes = @file_put_contents($outputPath, $json);
+            umask($previousUmask);
+            if ($bytes === false || !@chmod($outputPath, 0o600)) {
+                $io->error(sprintf('Cannot write export to "%s"', $outputPath));
+                return Command::FAILURE;
+            }
             $io->success(sprintf('GDPR export for "%s" written to %s (%d bytes)', $email, $outputPath, $bytes));
         } else {
             $output->writeln($json);

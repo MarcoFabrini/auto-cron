@@ -53,13 +53,20 @@ class Expense implements VehicleScoped
     #[Groups(['expense:read', 'expense:list', 'expense:write'])]
     private string $amount;
 
+    // Se ricorrente, `occurredAt` è la data del PRIMO addebito e ogni addebito già avvenuto entra nei costi
+    // (vedi RecurringSchedule): modificare la spesa cambia tutti i suoi addebiti, non c'è storico per addebito.
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
-    #[Groups(['expense:read', 'expense:write'])]
+    #[Groups(['expense:read', 'expense:list', 'expense:write'])]
     private bool $recurring = false;
 
     #[ORM\Column(name: 'recurring_period', length: 20, enumType: RecurringPeriod::class, nullable: true)]
-    #[Groups(['expense:read', 'expense:write'])]
+    #[Groups(['expense:read', 'expense:list', 'expense:write'])]
     private ?RecurringPeriod $recurringPeriod = null;
+
+    /** Ultima data possibile di addebito, inclusa (null = ancora in corso). */
+    #[ORM\Column(name: 'recurring_until', type: 'date_immutable', nullable: true)]
+    #[Groups(['expense:read', 'expense:list'])]
+    private ?\DateTimeImmutable $recurringUntil = null;
 
     #[ORM\Column(type: 'text', nullable: true)]
     #[Groups(['expense:read', 'expense:write'])]
@@ -91,6 +98,8 @@ class Expense implements VehicleScoped
     public function setRecurring(bool $r): self { $this->recurring = $r; return $this; }
     public function getRecurringPeriod(): ?RecurringPeriod { return $this->recurringPeriod; }
     public function setRecurringPeriod(?RecurringPeriod $p): self { $this->recurringPeriod = $p; return $this; }
+    public function getRecurringUntil(): ?\DateTimeImmutable { return $this->recurringUntil; }
+    public function setRecurringUntil(?\DateTimeImmutable $d): self { $this->recurringUntil = $d; return $this; }
     public function getNotes(): ?string { return $this->notes; }
     public function setNotes(?string $n): self { $this->notes = $n; return $this; }
     public function getCreatedAt(): \DateTimeImmutable { return $this->createdAt; }

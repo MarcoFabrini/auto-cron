@@ -3,17 +3,28 @@
  * Per evitare duplicazione delle string concat e Intl init.
  */
 
-const KM_FORMATTER = new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 });
+const NUMBER_FORMATS = new Map<string, Intl.NumberFormat>();
 
-/** "12.345 km" */
-export function formatKm(km: number): string {
-  return `${KM_FORMATTER.format(km)} km`;
+/** `Intl.NumberFormat` in cache per locale+opzioni: costruirlo è costoso e i formattatori girano a ogni render. */
+function numberFormat(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = `${locale}|${JSON.stringify(options)}`;
+  let format = NUMBER_FORMATS.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(locale, options);
+    NUMBER_FORMATS.set(key, format);
+  }
+  return format;
 }
 
-/** "8,4" — numero con al più `maxFractionDigits` decimali (it-IT). Null → "—". */
-export function formatDecimal(n: number | null | undefined, maxFractionDigits = 1): string {
+/** "12.345 km" (it-IT) / "12,345 km" (en-GB). */
+export function formatKm(km: number, locale = 'it-IT'): string {
+  return `${numberFormat(locale, { maximumFractionDigits: 0 }).format(km)} km`;
+}
+
+/** "8,4" — numero con al più `maxFractionDigits` decimali. Null → "—". */
+export function formatDecimal(n: number | null | undefined, maxFractionDigits = 1, locale = 'it-IT'): string {
   if (n === null || n === undefined || Number.isNaN(n)) return '—';
-  return new Intl.NumberFormat('it-IT', { maximumFractionDigits: maxFractionDigits }).format(n);
+  return numberFormat(locale, { maximumFractionDigits: maxFractionDigits }).format(n);
 }
 
 /** "1.234,50 €" — accetta decimal string ("123.45") o number. Null → "—". */
@@ -21,7 +32,7 @@ export function formatCurrency(amount: string | number | null | undefined, local
   if (amount === null || amount === undefined || amount === '') return '—';
   const n = typeof amount === 'string' ? Number.parseFloat(amount) : amount;
   if (Number.isNaN(n)) return '—';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(n);
+  return numberFormat(locale, { style: 'currency', currency }).format(n);
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -46,6 +57,11 @@ export function formatDate(iso: string | null | undefined, locale = 'it-IT'): st
 /** Locale `Intl` della lingua dell'interfaccia (`i18n.language`): "en…" → en-GB, altrimenti it-IT. */
 export function intlLocale(language: string): string {
   return language.startsWith('en') ? 'en-GB' : 'it-IT';
+}
+
+/** Lingua del profilo (`User['locale']`) per la lingua UI corrente: "en…" → 'en', altrimenti 'it'. */
+export function profileLocale(language: string): 'it' | 'en' {
+  return language.startsWith('en') ? 'en' : 'it';
 }
 
 const YEAR_MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
@@ -97,6 +113,6 @@ export function formatBytes(bytes: number, locale = 'it-IT'): string {
     value /= 1024;
     unit += 1;
   }
-  const formatted = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
+  const formatted = numberFormat(locale, { maximumFractionDigits: 1 }).format(value);
   return `${formatted} ${units[unit]}`;
 }

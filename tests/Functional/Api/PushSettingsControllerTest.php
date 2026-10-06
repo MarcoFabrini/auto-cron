@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use App\Entity\PushSubscription;
 use App\Enum\OrgRole;
+use App\Enum\PushPlatform;
 use App\Repository\PushSettingsRepository;
 use App\Service\SecretCipher;
 use App\Tests\Support\ApiTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 
 final class PushSettingsControllerTest extends ApiTestCase
 {
@@ -151,5 +154,107 @@ final class PushSettingsControllerTest extends ApiTestCase
         self::assertResponseStatusCodeSame(401);
         $this->jsonRequest('POST', '/api/settings/push/test');
         self::assertResponseStatusCodeSame(401);
+    }
+
+    public function testUpdateForbiddenForNonInstanceAdminAndSettingsStayUntouched(): void
+    {
+        [, , $adminToken] = $this->createAuthenticatedUser(); // primo utente = admin di istanza
+        $this->jsonRequest('POST', '/api/settings/push/generate', accessToken: $adminToken);
+        $publicKey = $this->jsonBody()['publicKey'];
+
+        // Un OWNER di un'altra org non deve poter spegnere o ridirigere il push di tutta l'istanza
+        [, , $token] = $this->createAuthenticatedUser();
+        $this->jsonRequest('PUT', '/api/settings/push', ['subject' => 'mailto:evil@example.com', 'enabled' => false], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('settings.instance_admin_required', $this->jsonBody()['title']);
+
+        $this->jsonRequest('GET', '/api/settings/push', accessToken: $adminToken);
+        $settings = $this->jsonBody();
+        self::assertTrue($settings['enabled']);
+        self::assertSame($publicKey, $settings['publicKey']);
+        self::assertStringNotContainsString('evil', (string) $settings['subject']);
+    }
+
+    public function testTestEndpointForbiddenForNonInstanceAdmin(): void
+    {
+        $this->createAuthenticatedUser();
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('POST', '/api/settings/push/test', accessToken: $token);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertSame('settings.instance_admin_required', $this->jsonBody()['title']);
+    }
+
+    public function testTestReturns400WhenPushIsNotConfigured(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('POST', '/api/settings/push/test', accessToken: $token);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('push.not_configured', $this->jsonBody()['title']);
+    }
+
+    public function testUpdateSavesTheSubjectAndDisablingStopsExposingThePublicKey(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $this->jsonRequest('POST', '/api/settings/push/generate', accessToken: $token);
+
+        $this->jsonRequest('PUT', '/api/settings/push', ['subject' => 'mailto:ops@example.com', 'enabled' => false], accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('mailto:ops@example.com', $this->jsonBody()['subject']);
+        self::assertFalse($this->jsonBody()['enabled']);
+        self::assertTrue($this->jsonBody()['hasKeys'], 'Disabilitare non cancella le chiavi');
+
+        // Il frontend non deve più iscrivere device a un push spento
+        $this->jsonRequest('GET', '/api/push-subscriptions/vapid-public-key', accessToken: $token);
+        self::assertSame('', $this->jsonBody()['publicKey']);
+
+        // Riabilitare con le chiavi presenti è consentito
+        $this->jsonRequest('PUT', '/api/settings/push', ['subject' => 'mailto:ops@example.com', 'enabled' => true], accessToken: $token);
+        self::assertResponseIsSuccessful();
+        self::assertTrue($this->jsonBody()['enabled']);
+    }
+
+    public function testUpdateRejectsATooLongSubject(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+
+        $this->jsonRequest('PUT', '/api/settings/push', ['subject' => str_repeat('a', 256), 'enabled' => false], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('subject', $this->jsonBody()['errors'][0]['field']);
+    }
+
+    public function testRegeneratingKeysDropsTheSubscriptionsOfEveryUser(): void
+    {
+        // La vecchia public key è incastonata in ogni subscription: dopo la rigenerazione nessuna può ricevere.
+        [$admin, , $token] = $this->createAuthenticatedUser();
+        $this->jsonRequest('POST', '/api/settings/push/generate', accessToken: $token);
+        $firstKey = $this->jsonBody()['publicKey'];
+
+        [$other] = $this->createAuthenticatedUser();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        foreach ([$admin, $other] as $n => $user) {
+            $em->persist(
+                (new PushSubscription())
+                    ->setUser($user)
+                    ->setPlatform(PushPlatform::WEB)
+                    ->setEndpoint('https://fcm.googleapis.com/fcm/send/device-'.$n)
+                    ->setP256dh('p256dh')
+                    ->setAuthSecret('auth'),
+            );
+        }
+        $em->flush();
+
+        $this->jsonRequest('POST', '/api/settings/push/generate', accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(2, $this->jsonBody()['removedSubscriptions']);
+        self::assertNotSame($firstKey, $this->jsonBody()['publicKey']);
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM push_subscriptions'));
     }
 }

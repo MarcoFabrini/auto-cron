@@ -9,6 +9,7 @@ use App\Entity\User;
 use App\Entity\Vehicle;
 use App\Enum\ExpenseCategory;
 use App\Enum\FuelType;
+use App\Enum\RecurringPeriod;
 use App\Service\AppClock;
 use App\Tests\Factory\ExpenseFactory;
 use App\Tests\Factory\MaintenanceFactory;
@@ -30,6 +31,12 @@ trait ChartFixtures
             ->modify('first day of this month')
             ->modify(sprintf('%+d months', $offset))
             ->modify(sprintf('+%d days', $day - 1));
+    }
+
+    /** Il giorno di calendario corrente nel fuso dell'istanza. */
+    private function today(): \DateTimeImmutable
+    {
+        return static::getContainer()->get(AppClock::class)->today();
     }
 
     private function monthKey(int $offset): string
@@ -76,6 +83,16 @@ trait ChartFixtures
         ExpenseFactory::createOne([
             'organization' => $vehicle->getOrganization(), 'vehicle' => $vehicle,
             'occurredAt' => $on, 'amount' => $amount, 'category' => $category,
+        ]);
+    }
+
+    /** Spesa ricorrente: `$on` è il primo addebito, `$until` l'ultimo possibile (inclusivo, null = in corso). */
+    private function recurringExpense(Vehicle $vehicle, \DateTimeImmutable $on, string $amount, RecurringPeriod $period, ExpenseCategory $category = ExpenseCategory::OTHER, ?\DateTimeImmutable $until = null): void
+    {
+        ExpenseFactory::createOne([
+            'organization' => $vehicle->getOrganization(), 'vehicle' => $vehicle,
+            'occurredAt' => $on, 'amount' => $amount, 'category' => $category,
+            'recurring' => true, 'recurringPeriod' => $period, 'recurringUntil' => $until,
         ]);
     }
 }

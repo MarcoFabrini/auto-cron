@@ -25,6 +25,7 @@ import { expenseSchema, type ExpenseFormData } from '@/schemas/expense.schema';
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
 import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
+import { useFieldErrorMessage } from '@/hooks/useFieldErrorMessage';
 import { todayIso } from '@/lib/format';
 
 export interface ExpenseFormProps {
@@ -56,6 +57,7 @@ export function ExpenseForm({
     amount: defaultValues?.amount ?? '',
     recurring: defaultValues?.recurring ?? false,
     recurringPeriod: defaultValues?.recurringPeriod ?? null,
+    recurringUntil: defaultValues?.recurringUntil ?? null,
     notes: defaultValues?.notes ?? null,
   };
 
@@ -69,8 +71,7 @@ export function ExpenseForm({
 
   const recurring = useWatch({ control: form.control, name: 'recurring' });
   const errors = form.formState.errors;
-  const tErr = (key: string | undefined) =>
-    key ? t(`errors.${key}`, { defaultValue: key }) : undefined;
+  const tErr = useFieldErrorMessage();
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -133,32 +134,50 @@ export function ExpenseForm({
       </label>
 
       {recurring && (
-        <FormField
-          label={t('expense.recurring_period')}
-          error={tErr(errors.recurringPeriod?.message)}
-          required
-        >
-          {(id) => (
-            <Controller
-              control={form.control}
-              name="recurringPeriod"
-              render={({ field }) => (
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                  <SelectTrigger id={id}>
-                    <SelectValue placeholder={t('expense.recurring_period')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RECURRING_PERIODS.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {t(`expense.recurring_options.${p}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          )}
-        </FormField>
+        <>
+          <FormField
+            label={t('expense.recurring_period')}
+            error={tErr(errors.recurringPeriod?.message)}
+            hint={t('expense.recurring_first_charge_hint')}
+            required
+          >
+            {(id) => (
+              <Controller
+                control={form.control}
+                name="recurringPeriod"
+                render={({ field }) => (
+                  <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                    <SelectTrigger id={id}>
+                      <SelectValue placeholder={t('expense.recurring_period')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECURRING_PERIODS.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {t(`expense.recurring_options.${p}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            )}
+          </FormField>
+
+          <FormField
+            label={t('expense.recurring_until')}
+            error={tErr(errors.recurringUntil?.message)}
+            hint={t('expense.recurring_until_hint')}
+          >
+            {(id) => (
+              <Input
+                id={id}
+                type="date"
+                invalid={!!errors.recurringUntil}
+                {...form.register('recurringUntil', { setValueAs: (v) => (v === '' ? null : v) })}
+              />
+            )}
+          </FormField>
+        </>
       )}
 
       <FormField label={t('expense.notes')} error={tErr(errors.notes?.message)} hint={t('common.optional')}>

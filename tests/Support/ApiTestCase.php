@@ -13,6 +13,7 @@ use App\Tests\Factory\UserFactory;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Zenstruck\Foundry\Test\Factories;
 use Zenstruck\Foundry\Test\ResetDatabase;
@@ -118,6 +119,21 @@ abstract class ApiTestCase extends WebTestCase
             return [];
         }
         return json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Il pool dei rate limiter è un ArrayAdapter che il kernel azzera a ogni richiesta (kernel.reset):
+     * se ne usa uno che ignora il reset (e niente reboot tra le richieste), così i contatori durano
+     * per tutto il test e il superamento del limite si può osservare.
+     */
+    protected function keepRateLimiterCountersForTheWholeTest(): void
+    {
+        $this->client->disableReboot();
+        static::getContainer()->set('cache.rate_limiter', new class extends ArrayAdapter {
+            public function reset(): void
+            {
+            }
+        });
     }
 
     // ---------------- multipart helpers ----------------

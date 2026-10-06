@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronsUpDown, Share2, Trash2 } from 'lucide-react';
+import { ChevronsUpDown, Share2, Trash2, UserRoundCog } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -17,6 +17,8 @@ import {
   Text,
 } from '@/components/ui';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TransferVehicleDialog } from './TransferVehicleDialog';
+import { useActiveMembership } from '@/hooks/useActiveMembership';
 import { useToast } from '@/hooks/useToast';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import {
@@ -31,6 +33,8 @@ import {
 export interface VehicleShareCardProps {
   vehicleId: number;
   currentUserId: number;
+  /** Dopo un trasferimento che toglie all'utente l'accesso al veicolo: la pagina naviga altrove. */
+  onAccessLost: () => void;
 }
 
 const fullName = (p: { firstName: string; lastName: string }) => `${p.firstName} ${p.lastName}`;
@@ -42,7 +46,7 @@ const fullName = (p: { firstName: string; lastName: string }) => `${p.firstName}
  * per nome e cognome da un elenco (nessuna email da digitare). Lo share del
  * proprietario non è revocabile.
  */
-export function VehicleShareCard({ vehicleId, currentUserId }: VehicleShareCardProps) {
+export function VehicleShareCard({ vehicleId, currentUserId, onAccessLost }: VehicleShareCardProps) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const errorMessage = useApiErrorMessage();
@@ -52,6 +56,9 @@ export function VehicleShareCard({ vehicleId, currentUserId }: VehicleShareCardP
   const create = useCreateShare(vehicleId);
   const revoke = useRevokeShare(vehicleId);
 
+  const orgRole = useActiveMembership()?.role;
+
+  const [transferOpen, setTransferOpen] = useState(false);
   const [toRevoke, setToRevoke] = useState<VehicleShare | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -139,7 +146,7 @@ export function VehicleShareCard({ vehicleId, currentUserId }: VehicleShareCardP
                           aria-label={t('vehicle.share.revoke')}
                           onClick={() => setToRevoke(s)}
                         >
-                          <Trash2 className="text-destructive" />
+                          <Trash2 className="text-destructive-text" />
                         </Button>
                       )}
                     </div>
@@ -200,7 +207,26 @@ export function VehicleShareCard({ vehicleId, currentUserId }: VehicleShareCardP
             </>
           )}
         </div>
+
+        <div className="space-y-3 border-t pt-4">
+          <p className="text-sm font-medium">{t('vehicle.transfer.button')}</p>
+          <Text variant="muted" className="text-sm">
+            {t('vehicle.transfer.section_description')}
+          </Text>
+          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setTransferOpen(true)}>
+            <UserRoundCog />
+            {t('vehicle.transfer.button')}
+          </Button>
+        </div>
       </CardContent>
+
+      <TransferVehicleDialog
+        open={transferOpen}
+        onOpenChange={setTransferOpen}
+        vehicleId={vehicleId}
+        orgRole={orgRole}
+        onAccessLost={onAccessLost}
+      />
 
       <ConfirmDialog
         open={toRevoke !== null}

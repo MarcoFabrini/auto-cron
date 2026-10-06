@@ -6,11 +6,16 @@ namespace App\Service\Gdpr;
 
 use App\Entity\Attachment;
 use App\Entity\AuditLog;
+use App\Entity\EmailVerificationToken;
 use App\Entity\OrganizationInvitation;
+use App\Entity\PasswordResetToken;
 use App\Entity\User;
 use App\Enum\OrgRole;
+use App\Repository\OrganizationInvitationRepository;
+use App\Repository\OrganizationMemberRepository;
 use App\Repository\PushSubscriptionRepository;
 use App\Repository\RefreshTokenRepository;
+use App\Service\OrganizationMemberRemover;
 use App\Service\Storage\AttachmentStorageInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -30,9 +35,12 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * 3. Revoke tutti i refresh token attivi.
  * 4. Delete tutte le push subscription (token mobile, endpoint web).
  * 5. Per ogni org dove l'utente è unico membro → delete org (cascade) e dei suoi file allegati.
- *    Negli altri casi le memberships restano (storia partecipazione).
+ *    Negli altri casi le memberships restano (storia partecipazione), ma i veicoli di cui è
+ *    proprietario passano al più anziano owner accettato dell'org, le sue altre share cadono e gli
+ *    inviti pendenti che ha spedito vengono eliminati.
  * 6. Rimuove il file avatar, azzera IP/user-agent negli audit log dell'utente ed elimina gli
- *    inviti indirizzati alla sua vecchia email (PII residua fuori dalla riga `users`).
+ *    inviti indirizzati alla sua vecchia email (PII residua fuori dalla riga `users`) e i suoi
+ *    token di reset password / verifica email.
  *
  * Il record `users` resta in DB con dati anonimi per:
  * - mantenere FK attachments.uploaded_by, vehicle_shares.invited_by
@@ -47,6 +55,9 @@ final class GdprDeleteService
         private readonly PushSubscriptionRepository $pushRepo,
         private readonly UserPasswordHasherInterface $hasher,
         private readonly AttachmentStorageInterface $storage,
+        private readonly OrganizationMemberRemover $memberRemover,
+        private readonly OrganizationMemberRepository $memberRepo,
+        private readonly OrganizationInvitationRepository $invitationRepo,
     ) {
     }
 
@@ -107,9 +118,16 @@ final class GdprDeleteService
                 $this->em->remove($org);
                 ++$deletedOrgs;
             } else {
+                // Altri membri restano: i veicoli dell'utente passano al più anziano degli owner
+                // (altrimenti l'account anonimo resterebbe "proprietario" e nessuno riceverebbe
+                // più le scadenze) e le sue altre share cadono. La membership resta (storia).
+                $this->memberRemover->handOverVehicles($user, $org, $this->memberRepo->findOldestAcceptedOwner($org, $user));
                 ++$keptMemberships;
             }
         }
+
+        // Gli inviti pendenti spediti dall'utente non devono sopravvivergli
+        $this->invitationRepo->deletePendingByInviter($user);
 
         // Revoke refresh tokens attivi (count prima del revoke per audit)
         $activeTokens = $this->tokenRepo->countActiveForUser($user);
@@ -134,6 +152,12 @@ final class GdprDeleteService
         $this->em->createQuery('DELETE FROM '.OrganizationInvitation::class.' i WHERE LOWER(i.email) = :email')
             ->setParameter('email', mb_strtolower($oldEmail))
             ->execute();
+        // Token di reset password e verifica email ancora validi: l'account è anonimo, non devono restare spendibili
+        foreach ([PasswordResetToken::class, EmailVerificationToken::class] as $tokenClass) {
+            $this->em->createQuery('DELETE FROM '.$tokenClass.' t WHERE t.user = :user')
+                ->setParameter('user', $user)
+                ->execute();
+        }
 
         // Anonymize PII
         $anonEmail = sprintf('deleted-%d-%s%s', $userId, bin2hex(random_bytes(8)), User::ANONYMIZED_EMAIL_SUFFIX);

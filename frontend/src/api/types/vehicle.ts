@@ -43,7 +43,7 @@ export interface Vehicle {
   secondaryFuelType: FuelType | null;
   initialKm: number;
   notes: string | null;
-  /** Assente nel group vehicle:list (undefined); presente in vehicle:read. */
+  /** Presente in lista e dettaglio: null per i veicoli attivi. */
   archivedAt?: string | null;
   photoPath?: string | null;
   /** Rapporto dell'utente corrente con il veicolo (lista e dettaglio). */

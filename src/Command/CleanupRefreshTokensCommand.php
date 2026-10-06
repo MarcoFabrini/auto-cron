@@ -18,7 +18,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * Hard-delete dei refresh token expired o revoked più vecchi di N giorni.
  * Da schedulare con cron settimanale (i token expired non danno problemi di sicurezza,
- * ma occupano spazio inutile).
+ * ma occupano spazio inutile). Un token ruotato e non ancora scaduto non si cancella comunque: serve a
+ * riconoscere il riuso (vedi RefreshTokenService) finché potrebbe essere ripresentato.
  *
  *   0 3 * * 0  php bin/console app:refresh-tokens:cleanup
  */

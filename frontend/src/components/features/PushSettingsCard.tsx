@@ -107,7 +107,7 @@ export function PushSettingsCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2">
+        <CardTitle as="h2" className="flex flex-wrap items-center gap-2">
           <BellRing className="size-4" />
           {t('settings.notifications')}
           {isInstanceAdmin && settings.data && <SettingsSourceBadge source={settings.data.source} />}

@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use App\Enum\ExpenseCategory;
 use App\Enum\FuelType;
+use App\Enum\RecurringPeriod;
 use App\Tests\Factory\MaintenanceFactory;
 use App\Tests\Factory\RefuelingFactory;
 use App\Tests\Factory\VehicleFactory;
 use App\Tests\Support\ApiTestCase;
+use App\Tests\Support\ChartFixtures;
 
 /**
  * Test del calcolo statistico, con focus su:
@@ -19,6 +22,8 @@ use App\Tests\Support\ApiTestCase;
  */
 final class VehicleStatsTest extends ApiTestCase
 {
+    use ChartFixtures;
+
     public function testStatsReturnsZerosWhenNoData(): void
     {
         [, $org, $token] = $this->createAuthenticatedUser();
@@ -314,5 +319,83 @@ final class VehicleStatsTest extends ApiTestCase
 
         $this->jsonRequest('GET', '/api/vehicles/'.$vehicleB->getId().'/stats', accessToken: $tokenA);
         self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testMonthlyRecurringExpenseCountsEveryChargeAlreadyDue(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($owner, $org, ['initialKm' => 1000]);
+        $this->refueling($vehicle, $this->day(-1), 1100, '10.000', '1.0000'); // 10.00, 100 km percorsi
+        // Quattro addebiti da 50.00 (-3, -2, -1, 0) + una spesa singola da 5.00.
+        $this->recurringExpense($vehicle, $this->day(-3), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION);
+        $this->expense($vehicle, $this->day(-1, 5), '5.00');
+
+        $body = $this->stats($token, $vehicle->getId());
+
+        self::assertSame('215.00', $body['totals']['cost']);
+        self::assertSame(100, $body['kmDriven']);
+        self::assertSame(2.15, $body['costPerKm']);
+        // `expenses` conta i record, non gli addebiti.
+        self::assertSame(2, $body['totals']['expenses']);
+    }
+
+    public function testYearlyAndWeeklyRecurringExpenses(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($owner, $org, ['initialKm' => 1000]);
+        $this->recurringExpense($vehicle, $this->day(-12), '300.00', RecurringPeriod::YEARLY, ExpenseCategory::INSURANCE); // 2 addebiti
+        $this->recurringExpense($vehicle, $this->today()->modify('-2 weeks'), '10.00', RecurringPeriod::WEEKLY, ExpenseCategory::PARKING); // 3 addebiti
+
+        $body = $this->stats($token, $vehicle->getId());
+
+        self::assertSame('630.00', $body['totals']['cost']);
+        self::assertSame(2, $body['totals']['expenses']);
+    }
+
+    public function testRecurringUntilIsInclusiveAndStopsTheCharges(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($owner, $org, ['initialKm' => 1000]);
+        $this->recurringExpense($vehicle, $this->day(-5), '50.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-3, 10)); // -5, -4, -3
+        $this->recurringExpense($vehicle, $this->day(-5), '7.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-3));    // fine sul terzo addebito: ancora incluso
+        $this->recurringExpense($vehicle, $this->day(-5), '1000.00', RecurringPeriod::MONTHLY, ExpenseCategory::SUBSCRIPTION, $this->day(-5)->modify('-1 day')); // fine prima dell'inizio: nessun addebito
+
+        $body = $this->stats($token, $vehicle->getId());
+
+        self::assertSame('171.00', $body['totals']['cost']);
+    }
+
+    public function testFutureChargesAndFutureStartAreNotCounted(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($owner, $org, ['initialKm' => 1000]);
+        $this->recurringExpense($vehicle, $this->day(-1), '90.00', RecurringPeriod::QUARTERLY, ExpenseCategory::INSURANCE); // solo il primo
+        $this->recurringExpense($vehicle, $this->day(1), '500.00', RecurringPeriod::MONTHLY, ExpenseCategory::INSURANCE);   // parte il mese prossimo
+        $this->recurringExpense($vehicle, $this->today(), '3.00', RecurringPeriod::YEARLY, ExpenseCategory::INSURANCE);     // il primo addebito è oggi
+
+        $body = $this->stats($token, $vehicle->getId());
+
+        self::assertSame('93.00', $body['totals']['cost']);
+    }
+
+    public function testOtherVehiclesRecurringExpensesAreNotCounted(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = $this->ownedVehicle($owner, $org, ['initialKm' => 1000]);
+        $this->recurringExpense($vehicle, $this->day(-1), '10.00', RecurringPeriod::MONTHLY, ExpenseCategory::INSURANCE);
+        $this->recurringExpense($this->ownedVehicle($owner, $org), $this->day(-1), '1000.00', RecurringPeriod::WEEKLY, ExpenseCategory::INSURANCE);
+
+        $body = $this->stats($token, $vehicle->getId());
+
+        self::assertSame('20.00', $body['totals']['cost']);
+    }
+
+    /** @return array<string, mixed> */
+    private function stats(string $token, ?int $vehicleId): array
+    {
+        $this->jsonRequest('GET', '/api/vehicles/'.$vehicleId.'/stats', accessToken: $token);
+        self::assertResponseIsSuccessful();
+
+        return $this->jsonBody();
     }
 }

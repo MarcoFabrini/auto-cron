@@ -14,6 +14,13 @@ namespace App\Service;
  * quindi la somma dei litri immessi tra due pieni corrisponde esattamente al consumo, a
  * prescindere da quanti rifornimenti parziali ci sono nel mezzo.
  *
+ * Un pieno il cui odometro non supera quello dell'ultimo pieno valido (refuso) conta come parziale:
+ * accumula litri verso il pieno valido successivo e non diventa mai il punto di partenza.
+ *
+ * Allo stesso modo un pieno che darebbe più di {@see self::MAX_PLAUSIBLE_KM_PER_LITER} km/l (refuso verso l'alto,
+ * es. 100600 invece di 10600) non conta come intervallo e non diventa il punto di partenza: si comporta da
+ * parziale, i suoi litri si sommano verso il prossimo pieno plausibile e i pieni corretti successivi restano validi.
+ *
  * Veicoli bi-fuel: se tra i due pieni c'è un rifornimento dell'ALTRO carburante, i km percorsi
  * nell'intervallo sono in parte fatti con quello: attribuirli tutti al primo ne sovrastimerebbe
  * il consumo. Quell'intervallo viene scartato (il pieno successivo fa da nuovo punto di partenza).
@@ -23,6 +30,13 @@ namespace App\Service;
  */
 final class FuelConsumption
 {
+    /**
+     * Soglia di plausibilità: un intervallo oltre questi km per litro è un dato sbagliato (tipicamente un
+     * refuso sull'odometro verso l'alto), non un consumo reale. Per i veicoli elettrici i kWh sono
+     * registrati come litri, quindi 100 è comunque un margine ampio.
+     */
+    public const MAX_PLAUSIBLE_KM_PER_LITER = 100.0;
+
     /**
      * Intervalli validi tra pieni consecutivi di `$fuel`, nell'ordine in cui si chiudono.
      *
@@ -53,9 +67,29 @@ final class FuelConsumption
                 continue;
             }
 
+            // Un pieno con km non superiori all'ultimo punto di partenza (refuso sull'odometro o riga
+            // inserita fuori ordine) non è un punto di partenza affidabile: si tratta come un rifornimento
+            // parziale. I suoi litri restano nel totale (già sommati sopra) e contano per il prossimo pieno
+            // valido; se diventasse l'ancora, il refuso falserebbe anche l'intervallo successivo.
+            if ($lastFullKm !== null && (int) $row['km'] <= $lastFullKm) {
+                continue;
+            }
+
+            // Intervallo implausibile (più di MAX_PLAUSIBLE_KM_PER_LITER km/l): stesso trattamento di un parziale.
+            // Vale solo per intervalli "puri": con l'altro carburante in mezzo i km non sono attribuibili ai soli litri
+            // di questo carburante, quindi il rapporto non è confrontabile e l'intervallo è comunque scartato.
+            if (
+                $lastFullKm !== null
+                && !$mixedWithOtherFuel
+                && $litersSinceLastFull > 0
+                && ((int) $row['km'] - $lastFullKm) / $litersSinceLastFull > self::MAX_PLAUSIBLE_KM_PER_LITER
+            ) {
+                continue;
+            }
+
             if ($lastFullKm !== null && !$mixedWithOtherFuel) {
                 $deltaKm = (int) $row['km'] - $lastFullKm;
-                if ($deltaKm > 0 && $litersSinceLastFull > 0) {
+                if ($litersSinceLastFull > 0) {
                     $intervals[] = [
                         'closedOn' => substr($row['refueled_at'], 0, 10),
                         'km' => $deltaKm,

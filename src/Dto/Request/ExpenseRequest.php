@@ -32,12 +32,19 @@ final class ExpenseRequest
         public bool $recurring = false,
         public ?RecurringPeriod $recurringPeriod = null,
 
+        /** Ultima data di addebito (Y-m-d, inclusa); vuota = ancora in corso. */
+        #[Assert\Date]
+        public ?string $recurringUntil = null,
+
         #[Assert\Length(max: 2000)]
         public ?string $notes = null,
     ) {
     }
 
-    /** Il periodo ha senso solo per le spese ricorrenti (e lì è obbligatorio). */
+    /**
+     * Il periodo ha senso solo per le spese ricorrenti (e lì è obbligatorio); la data di fine pure
+     * (opzionale) e non può precedere il primo addebito.
+     */
     #[Assert\Callback]
     public function validateRecurrence(ExecutionContextInterface $context): void
     {
@@ -46,6 +53,21 @@ final class ExpenseRequest
         }
         if (!$this->recurring && $this->recurringPeriod !== null) {
             $context->buildViolation('expense.recurring_period_unexpected')->atPath('recurringPeriod')->addViolation();
+        }
+
+        $until = $this->recurringUntil;
+        if ($until === null || $until === '') {
+            return;
+        }
+        if (!$this->recurring) {
+            $context->buildViolation('expense.recurring_until_unexpected')->atPath('recurringUntil')->addViolation();
+
+            return;
+        }
+        // Le date in formato Y-m-d si confrontano come stringhe; un formato errato lo segnala già Assert\Date.
+        $isDate = static fn (string $value): bool => preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1;
+        if ($isDate($until) && $isDate($this->occurredAt) && $until < $this->occurredAt) {
+            $context->buildViolation('expense.recurring_until_before_start')->atPath('recurringUntil')->addViolation();
         }
     }
 }

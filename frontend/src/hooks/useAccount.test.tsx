@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useVerifyEmail, useResendVerification, useAcceptInvitation } from './useAccount';
+import { useVerifyEmail, useResendVerification, useAcceptInvitation, useRegisterInvited } from './useAccount';
+import i18n from '@/i18n';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { authFetch } from '@/api/client';
 
@@ -72,5 +73,44 @@ describe('useAccount mutations', () => {
     expect(mockedAuthFetch).toHaveBeenNthCalledWith(3, '/api/auth/me');
     expect(useAuthStore.getState().accessToken).toBe('token-org-7');
     expect(useAuthStore.getState().user).toBe(me);
+  });
+
+  it("useAcceptInvitation svuota la cache della vecchia organizzazione ma tiene l'anteprima dell'invito", async () => {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    qc.setQueryData(['invitation', 'inv-1'], { organizationName: 'Officina' });
+    qc.setQueryData(['vehicles', 'list'], [{ id: 1 }]);
+    mockedAuthFetch
+      .mockResolvedValueOnce({ organizationId: 7 })
+      .mockResolvedValueOnce({ access_token: 'token-org-7' })
+      .mockResolvedValueOnce({ id: 1 });
+    const { result } = renderHook(() => useAcceptInvitation(), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+
+    result.current.mutate({ token: 'inv-1' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(['vehicles', 'list'])).toBeUndefined();
+    expect(qc.getQueryData(['invitation', 'inv-1'])).toEqual({ organizationName: 'Officina' });
+  });
+
+  it.each([
+    ['it', 'it'],
+    ['en', 'en'],
+  ])('useRegisterInvited con UI in %s invia locale %s e non cambia la lingua', async (language, expected) => {
+    await i18n.changeLanguage(language);
+    mockedAuthFetch.mockImplementation(async (path) => {
+      if (path === '/api/auth/invitation/register') return { access_token: 'tok' };
+      if (path === '/api/auth/me') return { id: 1, locale: expected, memberships: [] };
+      throw new Error(`unexpected fetch ${path}`);
+    });
+    const { result } = renderHook(() => useRegisterInvited(), { wrapper });
+
+    result.current.mutate({ token: 't', firstName: 'A', lastName: 'B', password: 'segreta-123' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const body = JSON.parse(String(mockedAuthFetch.mock.calls[0]?.[1]?.body)) as { locale: string };
+    expect(body.locale).toBe(expected);
+    expect(i18n.language.startsWith(language)).toBe(true);
   });
 });

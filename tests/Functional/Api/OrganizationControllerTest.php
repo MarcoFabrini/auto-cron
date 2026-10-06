@@ -5,12 +5,18 @@ declare(strict_types=1);
 namespace App\Tests\Functional\Api;
 
 use App\Enum\OrgRole;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Event\PreFlushEventArgs;
+use Doctrine\ORM\Events;
 use App\Repository\OrganizationRepository;
 use App\Tests\Factory\OrganizationFactory;
 use App\Tests\Factory\OrganizationMemberFactory;
 use App\Tests\Factory\UserFactory;
 use App\Tests\Support\ApiTestCase;
 use Symfony\Bundle\FrameworkBundle\Test\MailerAssertionsTrait;
+use Symfony\Component\Mailer\Event\MessageEvent;
+use Symfony\Component\Mailer\Exception\TransportException;
 use Symfony\Component\Mime\Email;
 
 final class OrganizationControllerTest extends ApiTestCase
@@ -48,6 +54,80 @@ final class OrganizationControllerTest extends ApiTestCase
         // Tramite /me l'utente deve avere ora 2 memberships
         $this->jsonRequest('GET', '/api/auth/me', accessToken: $token);
         self::assertCount(2, $this->jsonBody()['memberships']);
+    }
+
+    public function testCreateOrganizationIsForbiddenToNonInstanceAdmins(): void
+    {
+        // Il primo utente è l'admin di istanza: gli altri (qualunque ruolo nella loro org) non creano org
+        $this->createAuthenticatedUser();
+        foreach ([OrgRole::OWNER, OrgRole::ADMIN, OrgRole::MEMBER] as $role) {
+            [, , $token] = $this->createAuthenticatedUser($role);
+
+            $this->jsonRequest('POST', '/api/organizations', ['name' => 'Abuso '.$role->value], accessToken: $token);
+
+            self::assertResponseStatusCodeSame(403);
+            self::assertSame('org.create_forbidden', $this->jsonBody()['title']);
+        }
+        self::assertCount(4, OrganizationFactory::all(), 'Nessuna organizzazione creata oltre alle 4 dei test');
+    }
+
+    public function testSlugAlreadyUsedIsAFieldError(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        OrganizationFactory::createOne(['slug' => 'famiglia-rossi']);
+
+        $this->jsonRequest('POST', '/api/organizations', ['name' => 'Famiglia Rossi', 'slug' => 'famiglia-rossi'], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('validation_failed', $this->jsonBody()['title']);
+        self::assertContains(['field' => 'slug', 'message' => 'org.slug_taken'], $this->jsonBody()['errors']);
+    }
+
+    public function testCreateWithASlugTakenAfterTheCheckIsStillAFieldErrorNotA500(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $this->takeSlugRightBeforeTheNextFlush('corsa');
+
+        $this->jsonRequest('POST', '/api/organizations', ['name' => 'Corsa', 'slug' => 'corsa'], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertContains(['field' => 'slug', 'message' => 'org.slug_taken'], $this->jsonBody()['errors']);
+    }
+
+    public function testUpdateWithASlugTakenAfterTheCheckIsStillAFieldErrorNotA500(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $this->takeSlugRightBeforeTheNextFlush('corsa-update');
+
+        $this->jsonRequest('PUT', '/api/organizations/'.$org->getId(), ['name' => 'Nuovo nome', 'slug' => 'corsa-update'], accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertContains(['field' => 'slug', 'message' => 'org.slug_taken'], $this->jsonBody()['errors']);
+    }
+
+    /**
+     * Simula la corsa: un'altra richiesta inserisce lo slug dopo la validazione e prima del flush,
+     * così il controllo UniqueEntity passa e a fallire è l'indice unico.
+     */
+    private function takeSlugRightBeforeTheNextFlush(string $slug): void
+    {
+        $this->client->disableReboot(); // stesso container (e stesso EntityManager) per tutta la richiesta
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->getEventManager()->addEventListener(Events::preFlush, new class($em->getConnection(), $slug) {
+            private bool $done = false;
+
+            public function __construct(private readonly Connection $connection, private readonly string $slug)
+            {
+            }
+
+            public function preFlush(PreFlushEventArgs $args): void
+            {
+                if (!$this->done) {
+                    $this->done = true;
+                    $this->connection->insert('organizations', ['name' => 'Arrivata prima', 'slug' => $this->slug]);
+                }
+            }
+        });
     }
 
     public function testGetReturnsForbiddenForNonMember(): void
@@ -178,6 +258,53 @@ final class OrganizationControllerTest extends ApiTestCase
 
         $this->jsonRequest('GET', '/api/organizations/'.$org->getId().'/invitations', accessToken: $token);
         self::assertCount(1, $this->jsonBody(), 'Un solo invito pendente per email');
+    }
+
+    public function testInvitationEmailFailureDoesNotTurnIntoA500(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $this->client->disableReboot();
+        // Il trasporto SMTP "cade": qualunque invio solleva
+        $attempts = 0;
+        static::getContainer()->get('event_dispatcher')->addListener(
+            MessageEvent::class,
+            static function () use (&$attempts): void {
+                ++$attempts;
+                throw new TransportException('SMTP giù');
+            },
+        );
+
+        $this->jsonRequest('POST', '/api/organizations/'.$org->getId().'/members', ['email' => 'unlucky@test.it', 'role' => 'member'], accessToken: $token);
+
+        self::assertSame(1, $attempts, 'L\'invio è stato tentato ed è fallito');
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame('unlucky@test.it', $this->jsonBody()['email']);
+        $this->jsonRequest('GET', '/api/organizations/'.$org->getId().'/invitations', accessToken: $token);
+        self::assertSame(['unlucky@test.it'], array_column($this->jsonBody(), 'email'), 'L\'invito esiste anche senza email');
+    }
+
+    public function testInvitationsAreRateLimitedPerInvitingUser(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        [, $otherOrg, $otherToken] = $this->createAuthenticatedUser();
+        $this->keepRateLimiterCountersForTheWholeTest();
+        $invite = fn (int $orgId, string $jwt, int $n) => $this->jsonRequest('POST', '/api/organizations/'.$orgId.'/members', [
+            'email' => "guest$n@test.it", 'role' => 'member',
+        ], accessToken: $jwt);
+
+        for ($n = 1; $n <= 20; ++$n) {
+            $invite((int) $org->getId(), $token, $n);
+            self::assertResponseStatusCodeSame(201, "invito $n");
+        }
+        $invite((int) $org->getId(), $token, 21);
+        self::assertResponseStatusCodeSame(429);
+        self::assertSame('member.invite_rate_limited', $this->jsonBody()['title']);
+        $this->jsonRequest('GET', '/api/organizations/'.$org->getId().'/invitations', accessToken: $token);
+        self::assertCount(20, $this->jsonBody(), 'Il 21° invito non viene creato');
+
+        // Il limite è per utente che invita: un altro admin non ne risente
+        $invite((int) $otherOrg->getId(), $otherToken, 1);
+        self::assertResponseStatusCodeSame(201);
     }
 
     public function testRevokeInvitation(): void

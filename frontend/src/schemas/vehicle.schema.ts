@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { FUEL_TYPES, VEHICLE_TYPES } from '@/api/types/vehicle';
 
+/** Lunghezza massima delle note: stessa del backend (`VehicleRequest::$notes`) e del `maxLength` del form. */
+export const VEHICLE_NOTES_MAX_LENGTH = 5000;
+
 /**
  * Vehicle Zod schema — single source of truth per form + validation.
  * Match con backend `App\Dto\Request\VehicleRequest`.
@@ -23,7 +26,7 @@ export const vehicleSchema = z
     licensePlate: z.string().max(20).nullable().optional(),
     vin: z.string().max(17).nullable().optional(),
     initialKm: z.number({ message: 'vehicle.initial_km.required' }).int().nonnegative().max(9_999_999, 'common.km_too_large'),
-    notes: z.string().max(5000).nullable().optional(),
+    notes: z.string().max(VEHICLE_NOTES_MAX_LENGTH).nullable().optional(),
   })
   .refine((data) => !data.secondaryFuelType || data.secondaryFuelType !== data.fuelType, {
     message: 'vehicle.duplicate_fuel_type',

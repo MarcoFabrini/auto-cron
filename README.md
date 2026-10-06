@@ -10,6 +10,32 @@
 
 Self-hosted vehicle management (PWA): maintenance, fuel logs, expenses, reminders and vehicle sharing with your family. Your data, 100% self-hosted.
 
+### Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/dashboard-light.png" alt="AutoCron dashboard in the light theme: totals, upcoming reminders and monthly charts"><br><sub>Dashboard, light theme</sub></td>
+    <td width="50%"><img src="screenshots/dashboard-dark.png" alt="AutoCron dashboard in the dark theme"><br><sub>Dashboard, dark theme</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/vehicle-detail.png" alt="Vehicle detail page with spending, category, distance and consumption charts"><br><sub>Vehicle detail with its charts</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/maintenance.png" alt="Maintenance log of a vehicle with costs and scheduled or unscheduled badges"><br><sub>Maintenance log</sub></td>
+    <td width="50%"><img src="screenshots/reminders.png" alt="Reminder list with overdue, due soon and OK badges"><br><sub>Reminders with urgency badges</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="33%"><img src="screenshots/mobile-dashboard.png" alt="AutoCron dashboard on a phone"><br><sub>Mobile dashboard</sub></td>
+    <td width="33%"><img src="screenshots/mobile-vehicle.png" alt="Vehicle charts on a phone"><br><sub>Mobile vehicle charts</sub></td>
+    <td width="33%"><img src="screenshots/mobile-reminders.png" alt="Reminder list on a phone"><br><sub>Mobile reminders</sub></td>
+  </tr>
+</table>
+
+_Sample data for a fictional user._
+
 ### Installation
 
 **Requirements:** Docker + Docker Compose.
@@ -37,7 +63,7 @@ The **first user** to register becomes the instance admin; after that, registrat
 
 ### Configuration
 
-- **Email:** set `MAILER_DSN` in `.env`. Without it, no emails are sent.
+- **Email:** set `MAILER_DSN` in `.env` (e.g. `smtp://user:password@smtp.example.com:587`). Without it the default is the `null` transport: nothing is delivered, **including reminder emails**, and each skipped message is logged as a warning.
 - **Web Push:** from Settings → Notifications (admin only).
 
 ### HTTPS (reverse proxy)
@@ -69,7 +95,7 @@ Then run `docker compose up -d` again. Using another proxy (nginx, Caddy, Cloudf
 ### Updating
 
 ```bash
-docker compose exec api php bin/console app:backup:create   # backup first
+docker compose exec -u www-data api php bin/console app:backup:create   # backup first
 docker compose pull && docker compose up -d
 ```
 
@@ -77,7 +103,45 @@ DB migrations run automatically on startup, so an update can change the schema: 
 
 ### Backup
 
-Data (DB, attachments, keys) lives in `./autocron/`, but **don't copy `./autocron/db` while the stack is running**: a live copy of a database directory can be inconsistent. A nightly job writes a DB dump and an uploads archive to `./autocron/backups` (readable only by the app user): copy those, plus your `.env`, to another machine. To copy the whole folder, stop the stack first (`docker compose down`).
+Data (DB, attachments, JWT keys) lives in `./autocron/`, but **don't copy `./autocron/db` while the stack is running**: a live copy of a database directory can be inconsistent. A nightly job writes a DB dump (`db-<date>.sql.gz`) and an uploads archive (`uploads-<date>.tar.gz`) to `./autocron/backups` (readable only by the app user): copy those, plus your `.env`, to another machine. The backups contain the database and the attachments only, **not the JWT keys** (see Restore). To copy the whole folder, stop the stack first (`docker compose down`).
+
+To take a backup by hand, run it as the app user (`-u www-data`), otherwise the files end up owned by root:
+
+```bash
+docker compose exec -u www-data api php bin/console app:backup:create
+```
+
+### Restore
+
+You need the `db-<date>.sql.gz` (and, if you have attachments, the matching `uploads-<date>.tar.gz`) from `./autocron/backups`, and the **same `.env`** as the instance that produced them. Keep the same `APP_SECRET`: the Web Push (VAPID) private key is stored encrypted with a key derived from it, so with a different `APP_SECRET` the push settings can no longer be decrypted.
+
+1. Put `compose.yml`, `.env` and the backup files in `./autocron/backups/` on the target machine. On an existing install stop the app, leaving the database up; on a new machine just start the database:
+
+   ```bash
+   docker compose stop api messenger        # existing install
+   docker compose up -d --wait db           # new machine (or if db is down)
+   ```
+
+2. Restore the database (the dump replaces the tables it contains):
+
+   ```bash
+   gunzip -c ./autocron/backups/db-<date>.sql.gz | docker compose exec -T db sh -c 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+   ```
+
+3. Restore the attachments into `./autocron/uploads` and give them to the app user (`www-data`, uid 82 in the image). Done inside a throwaway container, it needs neither `sudo` nor knowing the uid:
+
+   ```bash
+   docker compose run --rm --no-deps --entrypoint sh api -c \
+     'tar -xzf /var/backups/uploads-<date>.tar.gz -C /var/storage/uploads && chown -R www-data:www-data /var/storage/uploads'
+   ```
+
+4. Start everything:
+
+   ```bash
+   docker compose up -d
+   ```
+
+The JWT keys are **not** in the backups: if `./autocron/jwt` is empty the app generates a new pair at startup, which signs out every user (they just log in again). Migrations run on startup, so restoring a dump from an older version and then pulling a newer image works.
 
 ### Settings worth knowing
 
@@ -85,6 +149,9 @@ Data (DB, attachments, keys) lives in `./autocron/`, but **don't copy `./autocro
 |---|---|---|
 | `TRUSTED_PROXIES` | `REMOTE_ADDR` | Trust the direct peer (your reverse proxy) for `X-Forwarded-For`. Safe only while the port stays on `127.0.0.1`/a private network; if you expose it on `0.0.0.0`, set your proxy's IP/CIDR. |
 | `APP_TIMEZONE` | `Europe/Rome` | Calendar timezone for reminder due dates ("today"). |
+| `ATTACHMENTS_ORG_QUOTA_MB` | `1024` | Total attachment storage allowed per organization, in MB (`0` = no limit). Uploads beyond it get a 413. Separately, each record (vehicle, maintenance, expense...) holds at most 20 files. |
+| `VEHICLES_ORG_LIMIT` | `0` | Maximum number of vehicles per organization, archived ones included (`0` = no limit). Creating one past the limit gets a 422 `vehicle.limit_reached`; deleting a vehicle frees a slot, archiving it does not. |
+| `API_DOC_ENABLED` | `false` | Serves the interactive API documentation at `/api/doc` (and the OpenAPI spec at `/api/doc.json`) **without login**. Off by default: both answer 404. Set `API_DOC_ENABLED=true` in `.env` and restart to expose them; keep it off on an instance open to the internet unless you want the API surface public. |
 
 ### Development and contributing
 
@@ -99,6 +166,32 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security vulnerabilities: [SECURITY.md](
 ## It
 
 Gestione veicoli self-hosted (PWA): manutenzioni, rifornimenti, spese, scadenze e condivisione in famiglia. Dati tuoi, 100% self-hosted.
+
+### Screenshot
+
+<table>
+  <tr>
+    <td width="50%"><img src="screenshots/dashboard-light.png" alt="Dashboard di AutoCron nel tema chiaro: totali, prossime scadenze e grafici mensili"><br><sub>Dashboard, tema chiaro</sub></td>
+    <td width="50%"><img src="screenshots/dashboard-dark.png" alt="Dashboard di AutoCron nel tema scuro"><br><sub>Dashboard, tema scuro</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="screenshots/vehicle-detail.png" alt="Pagina di dettaglio veicolo con i grafici di spesa, categorie, distanza e consumi"><br><sub>Dettaglio veicolo con i suoi grafici</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="screenshots/maintenance.png" alt="Registro delle manutenzioni di un veicolo con costi e badge programmata o non programmata"><br><sub>Registro manutenzioni</sub></td>
+    <td width="50%"><img src="screenshots/reminders.png" alt="Elenco dei promemoria con badge scaduto, in scadenza e OK"><br><sub>Promemoria con badge di urgenza</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="33%"><img src="screenshots/mobile-dashboard.png" alt="Dashboard di AutoCron su smartphone"><br><sub>Dashboard su smartphone</sub></td>
+    <td width="33%"><img src="screenshots/mobile-vehicle.png" alt="Grafici del veicolo su smartphone"><br><sub>Grafici del veicolo su smartphone</sub></td>
+    <td width="33%"><img src="screenshots/mobile-reminders.png" alt="Elenco dei promemoria su smartphone"><br><sub>Promemoria su smartphone</sub></td>
+  </tr>
+</table>
+
+_Dati di esempio di un utente fittizio. Le schermate mostrano l'interfaccia in inglese._
 
 ### Installazione
 
@@ -127,7 +220,7 @@ Il **primo utente** che si registra diventa admin dell'istanza; poi la registraz
 
 ### Configurazione
 
-- **Email:** imposta `MAILER_DSN` in `.env`. Senza, le email non vengono inviate.
+- **Email:** imposta `MAILER_DSN` in `.env` (ad es. `smtp://utente:password@smtp.example.com:587`). Senza, si usa il trasporto `null`: non viene consegnato nulla, **nemmeno le email dei promemoria**, e ogni invio saltato finisce nel log come warning.
 - **Web Push:** da Impostazioni → Notifiche (solo admin).
 
 ### HTTPS (reverse proxy)
@@ -159,7 +252,7 @@ Poi rilancia `docker compose up -d`. Usi un altro proxy (nginx, Caddy, Cloudflar
 ### Aggiornamento
 
 ```bash
-docker compose exec api php bin/console app:backup:create   # prima un backup
+docker compose exec -u www-data api php bin/console app:backup:create   # prima un backup
 docker compose pull && docker compose up -d
 ```
 
@@ -167,7 +260,45 @@ Le migrazioni DB girano da sole all'avvio, quindi un aggiornamento può cambiare
 
 ### Backup
 
-I dati (DB, allegati, chiavi) sono in `./autocron/`, ma **non copiare `./autocron/db` a stack acceso**: la copia a caldo di una cartella di database può essere incoerente. Un job notturno scrive un dump del DB e un archivio degli upload in `./autocron/backups` (leggibile solo dall'utente dell'app): copia quelli, più il tuo `.env`, su un'altra macchina. Per copiare l'intera cartella ferma prima lo stack (`docker compose down`).
+I dati (DB, allegati, chiavi JWT) sono in `./autocron/`, ma **non copiare `./autocron/db` a stack acceso**: la copia a caldo di una cartella di database può essere incoerente. Un job notturno scrive un dump del DB (`db-<data>.sql.gz`) e un archivio degli upload (`uploads-<data>.tar.gz`) in `./autocron/backups` (leggibile solo dall'utente dell'app): copia quelli, più il tuo `.env`, su un'altra macchina. I backup contengono solo database e allegati, **non le chiavi JWT** (vedi Ripristino). Per copiare l'intera cartella ferma prima lo stack (`docker compose down`).
+
+Per fare un backup a mano eseguilo come utente dell'app (`-u www-data`), altrimenti i file risultano di proprietà di root:
+
+```bash
+docker compose exec -u www-data api php bin/console app:backup:create
+```
+
+### Ripristino
+
+Servono il `db-<data>.sql.gz` (e, se hai allegati, il relativo `uploads-<data>.tar.gz`) di `./autocron/backups` e lo **stesso `.env`** dell'istanza che li ha prodotti. Mantieni lo stesso `APP_SECRET`: la chiave privata VAPID del Web Push è salvata cifrata con una chiave derivata da quello, quindi con un `APP_SECRET` diverso le impostazioni push non sono più decifrabili.
+
+1. Metti `compose.yml`, `.env` e i file di backup in `./autocron/backups/` sulla macchina di destinazione. Su un'installazione esistente ferma l'app lasciando acceso il database; su una macchina nuova avvia solo il database:
+
+   ```bash
+   docker compose stop api messenger        # installazione esistente
+   docker compose up -d --wait db           # macchina nuova (o se db è spento)
+   ```
+
+2. Ripristina il database (il dump sostituisce le tabelle che contiene):
+
+   ```bash
+   gunzip -c ./autocron/backups/db-<data>.sql.gz | docker compose exec -T db sh -c 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+   ```
+
+3. Ripristina gli allegati in `./autocron/uploads` assegnandoli all'utente dell'app (`www-data`, uid 82 nell'immagine). In un container usa-e-getta non servono né `sudo` né l'uid:
+
+   ```bash
+   docker compose run --rm --no-deps --entrypoint sh api -c \
+     'tar -xzf /var/backups/uploads-<data>.tar.gz -C /var/storage/uploads && chown -R www-data:www-data /var/storage/uploads'
+   ```
+
+4. Avvia tutto:
+
+   ```bash
+   docker compose up -d
+   ```
+
+Le chiavi JWT **non** sono nei backup: se `./autocron/jwt` è vuota l'app ne genera una nuova coppia all'avvio e tutti gli utenti vengono disconnessi (basta rifare il login). Le migrazioni girano all'avvio, quindi si può ripristinare un dump di una versione precedente e poi scaricare un'immagine più recente.
 
 ### Impostazioni da conoscere
 
@@ -175,6 +306,9 @@ I dati (DB, allegati, chiavi) sono in `./autocron/`, ma **non copiare `./autocro
 |---|---|---|
 | `TRUSTED_PROXIES` | `REMOTE_ADDR` | Si fida del peer diretto (il tuo reverse proxy) per `X-Forwarded-For`. Sicuro solo finché la porta resta su `127.0.0.1`/rete privata; se la esponi su `0.0.0.0` imposta IP/CIDR del proxy. |
 | `APP_TIMEZONE` | `Europe/Rome` | Fuso di calendario per le scadenze dei promemoria ("oggi"). |
+| `ATTACHMENTS_ORG_QUOTA_MB` | `1024` | Spazio totale degli allegati per organizzazione, in MB (`0` = nessun limite). Oltre il limite l'upload risponde 413. In più, ogni record (veicolo, manutenzione, spesa...) contiene al massimo 20 file. |
+| `VEHICLES_ORG_LIMIT` | `0` | Numero massimo di veicoli per organizzazione, archiviati inclusi (`0` = nessun limite). Crearne uno oltre il limite risponde 422 `vehicle.limit_reached`; eliminare un veicolo libera un posto, archiviarlo no. |
+| `API_DOC_ENABLED` | `false` | Pubblica la documentazione interattiva dell'API su `/api/doc` (e lo spec OpenAPI su `/api/doc.json`) **senza login**. Spenta di default: entrambe rispondono 404. Imposta `API_DOC_ENABLED=true` in `.env` e riavvia per esporle; su un'istanza aperta a internet lasciala spenta se non vuoi rendere pubblica la superficie dell'API. |
 
 ### Sviluppo e contributi
 

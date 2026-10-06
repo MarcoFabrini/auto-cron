@@ -5,12 +5,17 @@ parameters:
     app.backups_dir: '/var/backups'
     app.frontend_url: '%env(default:app_frontend_url_default:FRONTEND_URL)%'
     app_frontend_url_default: 'http://localhost'
+    app_default_uri_default: 'http://localhost'
     app_mailer_dsn_default: 'null://null'
     app.mailer_from: '%env(default:app_mailer_from_default:MAILER_FROM)%'
     app_mailer_from_default: 'noreply@autocron.local'
     # Fuso di calendario dell'istanza (scadenze dei promemoria). Override: APP_TIMEZONE.
     app.timezone: '%env(default:app_timezone_default:APP_TIMEZONE)%'
     app_timezone_default: 'Europe/Rome'
+    # Tetto di spazio degli allegati per organizzazione, in MB (1 GiB). 0 = nessun limite. Override: ATTACHMENTS_ORG_QUOTA_MB.
+    app_attachments_org_quota_mb_default: 1024
+    # Tetto di veicoli per organizzazione (archiviati inclusi). 0 = nessun limite. Override: VEHICLES_ORG_LIMIT.
+    app_vehicles_org_limit_default: 0
 
 services:
     _defaults:
@@ -44,3 +49,7 @@ when@test:
     parameters:
         app.attachments_root: '%kernel.project_dir%/var/test-storage/uploads'
         app.backups_dir: '%kernel.project_dir%/var/test-storage/backups'
+        # 1 MB: i test del limite lavorano al byte senza dover creare file enormi.
+        app_attachments_org_quota_mb_default: 1
+        # 3 veicoli: i test del tetto lavorano al confine senza crearne decine (i factory non passano dal controllo).
+        app_vehicles_org_limit_default: 3

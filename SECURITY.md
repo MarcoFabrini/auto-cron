@@ -26,7 +26,9 @@ Running your instance safely is up to you. A few basics:
 
 - Generate `APP_SECRET`, `JWT_PASSPHRASE` and `MARIADB_PASSWORD` with `openssl rand -hex 32`, and `chmod 600 .env`.
 - `TRUSTED_PROXIES` defaults to `REMOTE_ADDR` (set in the container entrypoint): the direct peer is trusted to report the client IP. That is right while the app port stays bound to `127.0.0.1` or a private network (the default in `compose.yml`). If you publish it on `0.0.0.0`, anyone can forge `X-Forwarded-For` and sidestep the per-IP rate limits: set `TRUSTED_PROXIES` to your proxy's IP/CIDR (e.g. Cloudflare ranges) instead.
-- Update regularly, after a backup: `docker compose exec api php bin/console app:backup:create && docker compose pull && docker compose up -d`. Pin `AUTOCRON_TAG` to a version if you don't want `latest`.
+- Update regularly, after a backup: `docker compose exec -u www-data api php bin/console app:backup:create && docker compose pull && docker compose up -d`. Pin `AUTOCRON_TAG` to a version if you don't want `latest`.
+- The API documentation (`/api/doc`, `/api/doc.json`) is off by default (404). `API_DOC_ENABLED=true` in `.env` publishes it without login: turn it on only if you accept the whole API surface being readable by anyone who can reach the instance.
+- Sessions use rotating refresh tokens grouped by login session. If a token that was already rotated shows up again (more than 10 seconds later, so not just two tabs racing), someone holds a copy: AutoCron revokes the whole session, the user logs in again, and the instance logs a `Refresh token reuse detected` warning (user id and session id, never the token) on stdout (`docker compose logs api`).
 - Copy the backups in `./autocron/backups` (and your `.env`) to another machine. Don't copy `./autocron/db` while the stack is running.
 
 ---
@@ -57,5 +59,7 @@ La sicurezza della tua istanza è responsabilità tua. Le basi:
 
 - Genera `APP_SECRET`, `JWT_PASSPHRASE` e `MARIADB_PASSWORD` con `openssl rand -hex 32`, e fai `chmod 600 .env`.
 - `TRUSTED_PROXIES` di default vale `REMOTE_ADDR` (impostato nell'entrypoint del container): ci si fida del peer diretto per l'IP del client. Va bene finché la porta dell'app resta legata a `127.0.0.1` o a una rete privata (il default di `compose.yml`). Se la pubblichi su `0.0.0.0`, chiunque può falsificare `X-Forwarded-For` e aggirare i limiti per IP: imposta `TRUSTED_PROXIES` a IP/CIDR del tuo proxy (es. gli intervalli Cloudflare).
-- Aggiorna spesso, dopo un backup: `docker compose exec api php bin/console app:backup:create && docker compose pull && docker compose up -d`. Fissa `AUTOCRON_TAG` a una versione se non vuoi `latest`.
+- Aggiorna spesso, dopo un backup: `docker compose exec -u www-data api php bin/console app:backup:create && docker compose pull && docker compose up -d`. Fissa `AUTOCRON_TAG` a una versione se non vuoi `latest`.
+- La documentazione dell'API (`/api/doc`, `/api/doc.json`) è spenta di default (404). `API_DOC_ENABLED=true` in `.env` la pubblica senza login: accendila solo se accetti che tutta la superficie dell'API sia leggibile da chiunque raggiunga l'istanza.
+- Le sessioni usano refresh token a rotazione, raggruppati per sessione di login. Se un token già ruotato ricompare (dopo più di 10 secondi, quindi non per due schede in corsa) qualcuno ne ha una copia: AutoCron revoca l'intera sessione, l'utente rifà il login e l'istanza scrive su stdout un warning `Refresh token reuse detected` (id utente e id sessione, mai il token) leggibile con `docker compose logs api`.
 - Copia i backup di `./autocron/backups` (e il tuo `.env`) su un'altra macchina. Non copiare `./autocron/db` a stack acceso.

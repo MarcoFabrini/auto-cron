@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\Vehicle;
 use App\Enum\FuelType;
+use App\Enum\RecurringPeriod;
 use Doctrine\DBAL\Connection;
 use Symfony\Contracts\Cache\CacheInterface;
 use Symfony\Contracts\Cache\ItemInterface;
@@ -14,6 +15,10 @@ use Symfony\Contracts\Cache\ItemInterface;
  * Aggregati per la dashboard del veicolo.
  *
  * Le query SQL sono native per evitare il costo ORM su aggregazioni pesanti.
+ *
+ * Le spese ricorrenti si contano a ogni addebito già avvenuto ({@see RecurringSchedule}): il calcolo
+ * dipende dal giorno corrente, non solo dai dati scritti. Il TTL della cache (300 s) è un ritardo
+ * accettabile per un cambio di giorno; la modifica di una spesa invalida comunque la cache.
  */
 final class VehicleStatsService
 {
@@ -24,6 +29,8 @@ final class VehicleStatsService
         private readonly Connection $db,
         private readonly CacheInterface $cache,
         private readonly FuelConsumption $consumption,
+        private readonly RecurringSchedule $schedule,
+        private readonly AppClock $clock,
     ) {
     }
 
@@ -39,7 +46,8 @@ final class VehicleStatsService
     }
 
     /**
-     * Statistiche complete per un veicolo.
+     * Statistiche complete per un veicolo. `totals.cost` e `costPerKm` contano ogni addebito già avvenuto
+     * delle spese ricorrenti, mentre `totals.expenses` è il numero di RECORD spesa (non di addebiti).
      *
      * @return array{
      *     consumption: array<string, float|null>,   // per fuel type → km/l
@@ -140,6 +148,10 @@ final class VehicleStatsService
         ) ?: 0);
     }
 
+    /**
+     * Costo totale: rifornimenti, manutenzioni, spese singole (SQL) e spese ricorrenti espanse in
+     * addebiti. Si somma in centesimi interi e si formatta una volta sola.
+     */
     private function totalCost(int $vehicleId): string
     {
         $cost = $this->db->fetchOne(
@@ -148,11 +160,46 @@ final class VehicleStatsService
              ) + COALESCE(
                 (SELECT SUM(cost) FROM maintenances WHERE vehicle_id = :vid AND cost IS NOT NULL), 0
              ) + COALESCE(
-                (SELECT SUM(amount) FROM expenses WHERE vehicle_id = :vid), 0
+                (SELECT SUM(amount) FROM expenses WHERE vehicle_id = :vid AND recurring = 0), 0
              )',
             ['vid' => $vehicleId],
         );
-        return number_format((float) $cost, 2, '.', '');
+        $cents = self::cents((string) $cost) + $this->recurringExpenseCents($vehicleId);
+
+        return number_format($cents / 100, 2, '.', '');
+    }
+
+    /** Somma, in centesimi, degli addebiti già avvenuti di tutte le spese ricorrenti del veicolo. */
+    private function recurringExpenseCents(int $vehicleId): int
+    {
+        /** @var list<array{amount: string, occurred_at: string, recurring_period: string|null, recurring_until: string|null}> $rows */
+        $rows = $this->db->fetchAllAssociative(
+            'SELECT amount, occurred_at, recurring_period, recurring_until
+             FROM expenses
+             WHERE vehicle_id = :vid AND recurring = 1',
+            ['vid' => $vehicleId],
+        );
+
+        $today = $this->clock->today();
+        $total = 0;
+        foreach ($rows as $row) {
+            $period = $row['recurring_period'] !== null ? RecurringPeriod::tryFrom($row['recurring_period']) : null;
+            // Ricorrente senza periodo (dato incoerente, l'API non lo ammette): vale come spesa singola.
+            $count = $period === null ? 1 : \count($this->schedule->chargesUpTo(
+                $period,
+                new \DateTimeImmutable($row['occurred_at']),
+                $today,
+                $row['recurring_until'] !== null ? new \DateTimeImmutable($row['recurring_until']) : null,
+            ));
+            $total += $count * self::cents($row['amount']);
+        }
+
+        return $total;
+    }
+
+    private static function cents(string $decimal): int
+    {
+        return (int) round((float) $decimal * 100);
     }
 
     private function countByTable(int $vehicleId, string $table): int

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Archive, Pencil, Trash2 } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -30,11 +30,17 @@ import {
   VehicleShareCard,
   VehicleStatsCard,
 } from '@/components/features';
-import { useDeleteVehicle, useUnarchiveVehicle, useVehicle, useVehicleStats } from '@/hooks/useVehicles';
+import {
+  useArchiveVehicle,
+  useDeleteVehicle,
+  useUnarchiveVehicle,
+  useVehicle,
+  useVehicleStats,
+} from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useToast } from '@/hooks/useToast';
-import { formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 /**
  * VehicleDetailPage — grafici del veicolo (se non duplicano la dashboard), info, statistiche e
@@ -42,6 +48,7 @@ import { formatKm } from '@/lib/format';
  */
 export function VehicleDetailPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { id } = useParams<{ id: string }>();
   const vehicleId = Number(id);
   const navigate = useNavigate();
@@ -51,8 +58,10 @@ export function VehicleDetailPage() {
   const { data, isLoading, error } = useVehicle(vehicleId);
   const stats = useVehicleStats(vehicleId);
   const deleteMutation = useDeleteVehicle();
+  const archive = useArchiveVehicle();
   const unarchive = useUnarchiveVehicle();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const currentUser = useAuthStore((s) => s.user);
 
@@ -91,6 +100,17 @@ export function VehicleDetailPage() {
                   <Link to={`/vehicles/${data.id}/edit`}>
                     <Pencil />
                   </Link>
+                </Button>
+              )}
+              {/* Archiviare richiede lo stesso permesso dell'eliminazione (voter DELETE). */}
+              {canDelete && !archived && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setArchiveOpen(true)}
+                  aria-label={t('actions.archive')}
+                >
+                  <Archive />
                 </Button>
               )}
               {canDelete && (
@@ -157,12 +177,19 @@ export function VehicleDetailPage() {
             <div>
               <dt className="text-muted-foreground">{t('vehicle.current_km')}</dt>
               <dd className="font-medium">
-                {formatKm(stats.data?.currentKm ?? data.initialKm)}
+                {/* Niente fallback a initialKm: non sono i km attuali. Skeleton in attesa, trattino se la query fallisce. */}
+                {stats.data ? (
+                  fmt.km(stats.data.currentKm)
+                ) : stats.isError ? (
+                  '—'
+                ) : (
+                  <Skeleton className="h-5 w-20" />
+                )}
               </dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('vehicle.initial_km')}</dt>
-              <dd className="font-medium">{formatKm(data.initialKm)}</dd>
+              <dd className="font-medium">{fmt.km(data.initialKm)}</dd>
             </div>
           </dl>
           {data.notes && (
@@ -199,8 +226,34 @@ export function VehicleDetailPage() {
       </Tabs>
 
       {canShare && currentUser && (
-        <VehicleShareCard vehicleId={data.id} currentUserId={currentUser.id} />
+        <VehicleShareCard
+          vehicleId={data.id}
+          currentUserId={currentUser.id}
+          onAccessLost={() => void navigate('/vehicles')}
+        />
       )}
+
+      <ConfirmDialog
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        title={t('vehicle.archive.title')}
+        description={t('vehicle.archive.description')}
+        confirmVariant="primary"
+        confirmLabel={t('actions.archive')}
+        isPending={archive.isPending}
+        onConfirm={() =>
+          archive.mutate(vehicleId, {
+            onSuccess: () => {
+              toast({ title: t('vehicle.archive.done'), variant: 'success' });
+              navigate('/vehicles', { replace: true });
+            },
+            onError: (e) => {
+              setArchiveOpen(false);
+              toast({ title: errorMessage(e), variant: 'error' });
+            },
+          })
+        }
+      />
 
       <ConfirmDialog
         open={confirmOpen}

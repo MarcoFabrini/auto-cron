@@ -19,10 +19,11 @@ import { useDeleteMaintenance, useMaintenance } from '@/hooks/useMaintenances';
 import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
-import { formatCurrency, formatDate, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export function MaintenanceDetailPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { id } = useParams<{ id: string }>();
   const maintenanceId = Number(id);
   const navigate = useNavigate();
@@ -87,15 +88,15 @@ export function MaintenanceDetailPage() {
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-muted-foreground">{t('maintenance.performed_at')}</dt>
-              <dd className="font-medium">{formatDate(data.performedAt)}</dd>
+              <dd className="font-medium">{fmt.date(data.performedAt)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('maintenance.km')}</dt>
-              <dd className="font-medium">{formatKm(data.km)}</dd>
+              <dd className="font-medium">{fmt.km(data.km)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('maintenance.cost')}</dt>
-              <dd className="font-medium">{formatCurrency(data.cost)}</dd>
+              <dd className="font-medium">{fmt.currency(data.cost)}</dd>
             </div>
             {data.workshop && (
               <div>

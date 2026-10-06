@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
 import i18n from '@/i18n';
 import { VehicleStatsCard } from './VehicleStatsCard';
 import type { VehicleStats } from '@/api/types/vehicleStats';
@@ -14,6 +14,11 @@ const STATS: VehicleStats = {
 
 describe('VehicleStatsCard', () => {
   beforeEach(async () => {
+    await i18n.changeLanguage('it');
+  });
+  afterEach(async () => {
+    // Prima si smonta l'albero, poi si torna all'italiano: niente aggiornamenti fuori da act().
+    cleanup();
     await i18n.changeLanguage('it');
   });
 
@@ -38,5 +43,14 @@ describe('VehicleStatsCard', () => {
 
     expect(screen.getByText('—')).toBeInTheDocument();
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
+
+  it('in inglese km, costi e consumi seguono il formato inglese', async () => {
+    await i18n.changeLanguage('en');
+    render(<VehicleStatsCard stats={STATS} />);
+
+    expect(screen.getByText('12,345 km')).toBeInTheDocument();
+    expect(screen.getByText('€1,234.50')).toBeInTheDocument();
+    expect(screen.getByText('17.5 km/l')).toBeInTheDocument();
   });
 });

@@ -63,7 +63,7 @@ class Reminder implements VehicleScoped
 
     #[ORM\Column(name: 'notify_days_before', type: 'integer', options: ['default' => 30])]
     #[Assert\PositiveOrZero]
-    #[Groups(['reminder:read', 'reminder:write'])]
+    #[Groups(['reminder:read', 'reminder:list', 'reminder:write'])]
     private int $notifyDaysBefore = 30;
 
     #[ORM\Column(name: 'completed_at', type: 'datetime_immutable', nullable: true)]

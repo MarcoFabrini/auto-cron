@@ -24,7 +24,8 @@ import { refuelingSchema, type RefuelingFormData } from '@/schemas/refueling.sch
 import { ApiError } from '@/api/client';
 import { useServerFieldErrors } from '@/hooks/useServerFieldErrors';
 import { useResyncPristineForm } from '@/hooks/useResyncPristineForm';
-import { formatCurrency, todayIso } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
+import { todayIso } from '@/lib/format';
 import { parseDecimal } from '@/lib/decimal';
 
 export interface RefuelingFormProps {
@@ -53,6 +54,7 @@ export function RefuelingForm({
   onCancel,
 }: RefuelingFormProps) {
   const { t } = useTranslation();
+  const fmt = useFormat();
 
   const initialValues: RefuelingFormData = {
     vehicleId,
@@ -93,8 +95,7 @@ export function RefuelingForm({
   const pricePerLiter = useWatch({ control: form.control, name: 'pricePerLiter' });
   const litersNum = parseDecimal(liters ?? '');
   const priceNum = parseDecimal(pricePerLiter ?? '');
-  const computedTotal =
-    Number.isNaN(litersNum) || Number.isNaN(priceNum) ? null : (litersNum * priceNum).toFixed(2);
+  const computedTotal = Number.isNaN(litersNum) || Number.isNaN(priceNum) ? null : litersNum * priceNum;
 
   // Reset vehicleId if changes (rare edge — controlled prop drift)
   useEffect(() => {
@@ -180,9 +181,9 @@ export function RefuelingForm({
         </FormField>
       </div>
 
-      {computedTotal && (
+      {computedTotal !== null && (
         <Text variant="muted" className="text-right">
-          {t('refueling.total_cost')}: <span className="font-semibold text-foreground">{formatCurrency(computedTotal)}</span>
+          {t('refueling.total_cost')}: <span className="font-semibold text-foreground">{fmt.currency(computedTotal)}</span>
         </Text>
       )}
 

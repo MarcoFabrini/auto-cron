@@ -21,10 +21,11 @@ import {
 import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
-import { formatDate, formatKm } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export function ReminderDetailPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { id } = useParams<{ id: string }>();
   const reminderId = Number(id);
   const navigate = useNavigate();
@@ -90,13 +91,13 @@ export function ReminderDetailPage() {
             {data.dueDate && (
               <div>
                 <dt className="text-muted-foreground">{t('reminder.due_date')}</dt>
-                <dd className="font-medium">{formatDate(data.dueDate)}</dd>
+                <dd className="font-medium">{fmt.date(data.dueDate)}</dd>
               </div>
             )}
             {data.dueKm != null && (
               <div>
                 <dt className="text-muted-foreground">{t('reminder.due_km')}</dt>
-                <dd className="font-medium">{formatKm(data.dueKm)}</dd>
+                <dd className="font-medium">{fmt.km(data.dueKm)}</dd>
               </div>
             )}
             <div>
@@ -106,7 +107,7 @@ export function ReminderDetailPage() {
             {data.completedAt && (
               <div>
                 <dt className="text-muted-foreground">{t('reminder.completed_at')}</dt>
-                <dd className="font-medium">{formatDate(data.completedAt.slice(0, 10))}</dd>
+                <dd className="font-medium">{fmt.date(data.completedAt)}</dd>
               </div>
             )}
           </dl>

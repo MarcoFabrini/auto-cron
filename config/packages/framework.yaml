@@ -29,6 +29,11 @@ framework:
             policy: 'fixed_window'
             limit: 3
             interval: '15 minutes'
+        # Solo IP: il limite per (email, IP) non frena chi cambia indirizzo a ogni richiesta (mail bombing).
+        forgot_password_ip:
+            policy: 'fixed_window'
+            limit: 10
+            interval: '1 hour'
         api:
             policy: 'sliding_window'
             limit: 60
@@ -49,6 +54,12 @@ framework:
             policy: 'fixed_window'
             limit: 30
             interval: '15 minutes'
+        # Inviti a un'organizzazione: ognuno spedisce un'email vera dal tuo server. Per utente che invita
+        # (non per IP): un account compromesso o scorretto non può usare l'istanza per fare spam.
+        invite:
+            policy: 'sliding_window'
+            limit: 20
+            interval: '1 hour'
 
 when@test:
     framework:

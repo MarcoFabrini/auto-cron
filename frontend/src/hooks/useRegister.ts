@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { registrationKey } from '@/hooks/useRegistrationOpen';
+import i18n from '@/i18n';
 import { authFetch } from '@/api/client';
+import { profileLocale } from '@/lib/format';
 import { useAuthStore, type User } from '@/stores/useAuthStore';
 
 interface RegisterPayload {
@@ -28,7 +30,8 @@ export function useRegister() {
       const data = await authFetch<AuthResponse>('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ locale: 'it', ...payload }),
+        // Il profilo nasce nella lingua dell'interfaccia: così syncLanguage non la riporta in italiano.
+        body: JSON.stringify({ locale: profileLocale(i18n.language), ...payload }),
         skipRefresh: true,
       });
       useAuthStore.getState().setAccessToken(data.access_token);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller\Api;
 
 use App\Dto\Request\ReminderRequest;
+use App\Dto\Request\UpdateReminderRequest;
 use App\Entity\Reminder;
 use App\Entity\User;
 use App\Repository\ReminderRepository;
@@ -136,12 +137,16 @@ final class ReminderController extends AbstractController
 
     #[OA\Put(
         summary: 'Update reminder',
+        description: 'The vehicle of a reminder never changes: a `vehicleId` in the body is ignored.',
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
-        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: ReminderRequest::class))),
-        responses: [new OA\Response(response: 200, description: 'Updated', content: new OA\JsonContent(ref: new Model(type: Reminder::class, groups: ['reminder:read', 'vehicle:nested'])))],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: UpdateReminderRequest::class))),
+        responses: [
+            new OA\Response(response: 200, description: 'Updated', content: new OA\JsonContent(ref: new Model(type: Reminder::class, groups: ['reminder:read', 'vehicle:nested']))),
+            new OA\Response(response: 422, description: 'validation_failed'),
+        ],
     )]
     #[Route('/{id}', name: 'update', methods: ['PUT'], requirements: ['id' => '\d+'])]
-    public function update(int $id, #[MapRequestPayload] ReminderRequest $payload): JsonResponse
+    public function update(int $id, #[MapRequestPayload] UpdateReminderRequest $payload): JsonResponse
     {
         $r = $this->mustFind($id);
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $r);

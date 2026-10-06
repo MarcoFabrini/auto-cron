@@ -19,10 +19,11 @@ import { useDeleteExpense, useExpense } from '@/hooks/useExpenses';
 import { useCanEditVehicle } from '@/hooks/useVehicles';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 import { useToast } from '@/hooks/useToast';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 
 export function ExpenseDetailPage() {
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { id } = useParams<{ id: string }>();
   const expenseId = Number(id);
   const navigate = useNavigate();
@@ -50,7 +51,7 @@ export function ExpenseDetailPage() {
     <div className="space-y-6">
       <PageHeader
         title={t(`expense.category_options.${data.category}`)}
-        description={formatCurrency(data.amount)}
+        description={fmt.currency(data.amount)}
         onBack={() => navigate(`/expenses?vehicleId=${data.vehicleId}`)}
         action={
           canEdit ? (
@@ -79,17 +80,29 @@ export function ExpenseDetailPage() {
           <CardDescription>{data.description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data.recurring && data.recurringPeriod && (
-            <Badge variant="secondary">{t(`expense.recurring_options.${data.recurringPeriod}`)}</Badge>
+          {data.recurring && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {data.recurringPeriod && (
+                  <Badge variant="secondary">{t(`expense.recurring_options.${data.recurringPeriod}`)}</Badge>
+                )}
+                {data.recurringUntil && (
+                  <span className="text-muted-foreground">
+                    {t('expense.recurring_until_on', { date: fmt.date(data.recurringUntil) })}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">{t('expense.recurring_counted_note')}</p>
+            </div>
           )}
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-muted-foreground">{t('expense.occurred_at')}</dt>
-              <dd className="font-medium">{formatDate(data.occurredAt)}</dd>
+              <dd className="font-medium">{fmt.date(data.occurredAt)}</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">{t('expense.amount')}</dt>
-              <dd className="font-medium">{formatCurrency(data.amount)}</dd>
+              <dd className="font-medium">{fmt.currency(data.amount)}</dd>
             </div>
           </dl>
           {data.notes && <div className="rounded-md bg-muted px-3 py-2 text-sm">{data.notes}</div>}

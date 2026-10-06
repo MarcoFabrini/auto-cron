@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
@@ -23,15 +24,17 @@ const spinnerVariants = cva('animate-spin text-muted-foreground', {
 
 export interface SpinnerProps extends VariantProps<typeof spinnerVariants> {
   className?: string;
-  /** Label per screen reader (default "Loading...") */
+  /** Label per screen reader (default: `common.loading` tradotto) */
   label?: string;
 }
 
-export function Spinner({ size, className, label = 'Loading...' }: SpinnerProps) {
+export function Spinner({ size, className, label }: SpinnerProps) {
+  const { t } = useTranslation();
+  const accessibleLabel = label ?? t('common.loading');
   return (
-    <span role="status" className="inline-flex" aria-label={label}>
+    <span role="status" className="inline-flex" aria-label={accessibleLabel}>
       <Loader2 className={cn(spinnerVariants({ size }), className)} />
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{accessibleLabel}</span>
     </span>
   );
 }

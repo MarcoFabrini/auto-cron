@@ -1,11 +1,11 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, FormField, Heading, Input, Spinner, Text } from '@/components/ui';
 import { AuthLayout } from '@/components/layout';
-import { AuthBrand } from '@/components/features';
+import { AuthBrand, AuthLink } from '@/components/features';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useLogout } from '@/hooks/useLogout';
 import {
@@ -42,7 +42,11 @@ export function AcceptInvitePage() {
   const preview = useInvitationPreview(token);
   const accept = useAcceptInvitation();
   const register = useRegisterInvited();
+  // Blocca il doppio invio dell'effetto (StrictMode): l'invito si consuma alla prima accettazione.
   const accepted = useRef(false);
+  // Nome dell'organizzazione salvato al momento dell'accettazione: poi l'anteprima non è più
+  // leggibile (invito consumato) e la schermata di successo deve comunque nominarla.
+  const [joinedOrg, setJoinedOrg] = useState('');
 
   async function signOutAndContinue() {
     await logout();
@@ -54,12 +58,19 @@ export function AcceptInvitePage() {
   const sameEmail =
     !!currentEmail && !!data && currentEmail.toLowerCase() === data.email.toLowerCase();
 
+  function acceptInvitation() {
+    const org = data?.organizationName;
+    accept.mutate({ token }, { onSuccess: () => setJoinedOrg(org ?? '') });
+  }
+
   // Utente esistente loggato con l'email giusta → accetta automaticamente.
   useEffect(() => {
     if (status === 'authenticated' && sameEmail && !accepted.current) {
       accepted.current = true;
-      accept.mutate({ token });
+      acceptInvitation();
     }
+    // `acceptInvitation` è ricreata a ogni render e dipende da `data`/`accept`, già coperti da `sameEmail`/`accept`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, sameEmail, token, accept]);
 
   const form = useForm<AcceptInviteRegisterFormData>({
@@ -87,6 +98,22 @@ export function AcceptInvitePage() {
         <Heading level={2}>{t('auth.invite.invalid_title')}</Heading>
         <Text variant="muted">{t('auth.invite.invalid_description')}</Text>
         <Button asChild variant="outline" className="mt-2">
+          <Link to="/">{t('auth.invite.continue')}</Link>
+        </Button>
+      </Centered>
+    );
+  }
+
+  // L'accettazione svuota la cache e l'invito è ormai consumato: l'anteprima può solo fallire, quindi
+  // l'esito positivo ha la precedenza su qualunque stato della query.
+  if (status === 'authenticated' && accept.isSuccess) {
+    return (
+      <Centered>
+        <Heading level={2}>{t('auth.invite.success_title')}</Heading>
+        <Text variant="muted">
+          {joinedOrg ? t('auth.invite.joined', { org: joinedOrg }) : t('auth.invite.success_description')}
+        </Text>
+        <Button asChild className="mt-2">
           <Link to="/">{t('auth.invite.continue')}</Link>
         </Button>
       </Centered>
@@ -134,28 +161,20 @@ export function AcceptInvitePage() {
   if (status === 'authenticated') {
     return (
       <Centered>
-        {!accept.isSuccess && !accept.isError && (
+        {!accept.isError && (
           <>
             <Spinner />
             <Text variant="muted">{t('auth.invite.accepting')}</Text>
-          </>
-        )}
-        {accept.isSuccess && (
-          <>
-            <Heading level={2}>{t('auth.invite.success_title')}</Heading>
-            <Text variant="muted">
-              {t('auth.invite.joined', { org: data.organizationName })}
-            </Text>
-            <Button asChild className="mt-2">
-              <Link to="/">{t('auth.invite.continue')}</Link>
-            </Button>
           </>
         )}
         {accept.isError && (
           <>
             <Heading level={2}>{t('auth.invite.error_title')}</Heading>
             <Alert variant="error">{errorMessage(accept.error)}</Alert>
-            <Button asChild variant="outline" className="mt-2">
+            <Button className="mt-2" onClick={acceptInvitation}>
+              {t('auth.invite.retry')}
+            </Button>
+            <Button asChild variant="outline">
               <Link to="/">{t('auth.invite.continue')}</Link>
             </Button>
           </>
@@ -216,9 +235,9 @@ export function AcceptInvitePage() {
 
       <Text variant="muted" className="text-center">
         {t('auth.invite.have_account')}{' '}
-        <Link to={`/login?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`} className="font-medium text-primary hover:underline">
+        <AuthLink to={`/login?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`}>
           {t('auth.login.submit')}
-        </Link>
+        </AuthLink>
       </Text>
     </AuthLayout>
   );

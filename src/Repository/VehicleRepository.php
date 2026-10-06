@@ -26,12 +26,14 @@ class VehicleRepository extends ServiceEntityRepository
      * - se l'utente è org owner/admin → tutti i veicoli dell'org
      * - se è member → solo quelli con uno share esplicito
      *
+     * Di default solo i veicoli attivi; con `$archivedOnly` SOLO gli archiviati (stesse regole di accesso).
+     *
      * @return list<Vehicle>
      */
     public function findAccessibleByUserInOrganization(
         User $user,
         Organization $org,
-        bool $includeArchived = false,
+        bool $archivedOnly = false,
         bool $isOrgAdmin = false,
     ): array {
         $qb = $this->createQueryBuilder('v')
@@ -39,9 +41,7 @@ class VehicleRepository extends ServiceEntityRepository
             ->setParameter('org', $org)
             ->orderBy('v.name', 'ASC');
 
-        if (!$includeArchived) {
-            $qb->andWhere('v.archivedAt IS NULL');
-        }
+        $qb->andWhere($archivedOnly ? 'v.archivedAt IS NOT NULL' : 'v.archivedAt IS NULL');
 
         if (!$isOrgAdmin) {
             $qb->innerJoin('v.shares', 'vs', 'WITH', 'vs.user = :user AND vs.acceptedAt IS NOT NULL')
@@ -49,6 +49,17 @@ class VehicleRepository extends ServiceEntityRepository
         }
 
         return $qb->getQuery()->getResult();
+    }
+
+    /** Quanti veicoli ha l'organizzazione, archiviati inclusi (serve al tetto {@see \App\Service\VehicleQuota}). */
+    public function countByOrganization(Organization $org): int
+    {
+        return (int) $this->createQueryBuilder('v')
+            ->select('COUNT(v.id)')
+            ->where('v.organization = :org')
+            ->setParameter('org', $org)
+            ->getQuery()
+            ->getSingleScalarResult();
     }
 
     /**
@@ -73,23 +84,30 @@ class VehicleRepository extends ServiceEntityRepository
             ->getResult();
     }
 
+    /**
+     * Tutti i veicoli di cui `$owner` è proprietario in QUALSIASI organizzazione, archiviati inclusi:
+     * stessa regola di {@see self::findOwnedByUserInOrganization} (share `admin` accettato) ma senza
+     * filtro org né archiviazione. Serve all'export GDPR, che deve restituire i dati dell'utente e mai
+     * quelli degli altri membri (nemmeno se l'utente è owner dell'org).
+     *
+     * @return list<Vehicle>
+     */
+    public function findAllOwnedByUser(User $owner): array
+    {
+        return $this->createQueryBuilder('v')
+            ->innerJoin('v.shares', 'vs', 'WITH', 'vs.user = :owner AND vs.role = :ownerRole AND vs.acceptedAt IS NOT NULL')
+            ->innerJoin('v.organization', 'o')
+            ->addSelect('o')
+            ->setParameter('owner', $owner)
+            ->setParameter('ownerRole', ShareRole::ADMIN)
+            ->orderBy('o.id', 'ASC')
+            ->addOrderBy('v.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
+
     public function findOneInOrganization(int $id, Organization $org): ?Vehicle
     {
         return $this->findOneBy(['id' => $id, 'organization' => $org]);
-    }
-
-    /**
-     * Conta veicoli non archiviati per quota tier limits (#5.2).
-     * Esclude archivedAt IS NOT NULL così l'utente può archiviare per liberare slot.
-     */
-    public function countActiveByOrganization(Organization $org): int
-    {
-        return (int) $this->createQueryBuilder('v')
-            ->select('COUNT(v.id)')
-            ->where('v.organization = :org')
-            ->andWhere('v.archivedAt IS NULL')
-            ->setParameter('org', $org)
-            ->getQuery()
-            ->getSingleScalarResult();
     }
 }

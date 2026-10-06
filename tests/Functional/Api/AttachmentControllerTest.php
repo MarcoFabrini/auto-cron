@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Api;
 
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Event\PreFlushEventArgs;
+use Doctrine\ORM\Events;
 use PHPUnit\Framework\Attributes\DataProvider;
 use App\Enum\AttachmentEntityType;
 use App\Repository\AttachmentRepository;
 use App\Tests\Factory\AttachmentFactory;
+use App\Tests\Factory\OrganizationFactory;
 use App\Tests\Factory\MaintenanceFactory;
 use App\Tests\Factory\RefuelingFactory;
 use App\Tests\Factory\ReminderFactory;
@@ -255,5 +259,176 @@ final class AttachmentControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         self::assertCount(1, $this->jsonBody());
+    }
+
+    // -------------------- LIMITI --------------------
+
+    /** Quota di test: 1 MB (vedi `app_attachments_org_quota_mb_default` in `when@test`). */
+    private const TEST_QUOTA_BYTES = 1024 * 1024;
+
+    private function uploadTo(string $token, string $entityType, int|string|null $entityId, string $name = 'photo.png'): void
+    {
+        $this->client->request(
+            'POST',
+            '/api/attachments',
+            parameters: ['entityType' => $entityType, 'entityId' => (string) $entityId],
+            files: ['file' => $this->makeUploadedFile($name, $this->pngBytes(), 'image/png')],
+            server: ['HTTP_AUTHORIZATION' => 'Bearer '.$token, 'HTTP_X_CLIENT_TYPE' => 'mobile'],
+        );
+    }
+
+    private function seedAttachment(object $org, string $entityId, int $sizeBytes, string $type = 'vehicle'): void
+    {
+        AttachmentFactory::createOne([
+            'organization' => $org,
+            'entityType' => AttachmentEntityType::from($type),
+            'entityId' => $entityId,
+            'sizeBytes' => $sizeBytes,
+        ]);
+    }
+
+    public function testARecordAcceptsTwentyFilesAndRejectsTheTwentyFirst(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $other = VehicleFactory::createOne(['organization' => $org]);
+        for ($i = 0; $i < 19; ++$i) {
+            $this->seedAttachment($org, (string) $vehicle->getId(), 100);
+        }
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+        self::assertResponseStatusCodeSame(201, 'Il ventesimo file ci sta');
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('upload.too_many_files', $this->jsonBody()['title']);
+        $repo = static::getContainer()->get(AttachmentRepository::class);
+        self::assertCount(20, $repo->findByEntity(AttachmentEntityType::VEHICLE, (int) $vehicle->getId(), $org));
+
+        // Il limite è per record: un altro veicolo, o lo stesso id su un altro tipo, non è toccato
+        $this->uploadTo($token, 'vehicle', $other->getId());
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    #[DataProvider('quotaBoundary')]
+    public function testOrganizationQuotaBoundary(int $bytesOverTheLimit, int $expectedStatus): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $maintenance = MaintenanceFactory::createOne(['organization' => $org, 'vehicle' => $vehicle]);
+        // Lo spazio già occupato sta su un altro record: la quota è dell'organizzazione, non del record.
+        // Con 0 il nuovo file arriva esattamente al limite, con 1 lo supera di un byte.
+        $this->seedAttachment($org, (string) $maintenance->getId(), self::TEST_QUOTA_BYTES - strlen($this->pngBytes()) + $bytesOverTheLimit, 'maintenance');
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+
+        self::assertResponseStatusCodeSame($expectedStatus);
+        if ($expectedStatus === 413) {
+            self::assertSame('upload.quota_exceeded', $this->jsonBody()['title']);
+        }
+    }
+
+    /** @return iterable<string, array{int, int}> */
+    public static function quotaBoundary(): iterable
+    {
+        yield 'esattamente al limite' => [0, 201];
+        yield 'un byte oltre' => [1, 413];
+        yield 'molto oltre' => [500_000, 413];
+    }
+
+    public function testQuotaIsPerOrganization(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        // Un'altra organizzazione ha già riempito la sua quota: non deve toccare la nostra
+        $otherOrg = OrganizationFactory::createOne();
+        $otherVehicle = VehicleFactory::createOne(['organization' => $otherOrg]);
+        $this->seedAttachment($otherOrg, (string) $otherVehicle->getId(), self::TEST_QUOTA_BYTES);
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testFileCountIsPerOrganizationToo(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        // Stesso entityId di un'altra organizzazione (id polimorfici non univoci tra org): non conta
+        $otherOrg = OrganizationFactory::createOne();
+        for ($i = 0; $i < 20; ++$i) {
+            $this->seedAttachment($otherOrg, (string) $vehicle->getId(), 100);
+        }
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testTooLongClientFilenameIsTruncatedKeepingTheExtension(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $filesBefore = $this->storedFiles();
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId(), str_repeat('è', 300).'.png');
+
+        self::assertResponseStatusCodeSame(201);
+        $name = $this->jsonBody()['originalFilename'];
+        self::assertSame(255, mb_strlen($name));
+        self::assertStringEndsWith('.png', $name);
+        self::assertSame(str_repeat('è', 251).'.png', $name);
+        self::assertCount(count($filesBefore) + 1, $this->storedFiles(), 'Un file su disco per un allegato');
+    }
+
+    public function testAFilenameWithinTheLimitIsStoredUntouched(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $name = str_repeat('b', 251).'.png'; // 255 esatti
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId(), $name);
+
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame($name, $this->jsonBody()['originalFilename']);
+    }
+
+    public function testNoOrphanFileIsLeftWhenTheDatabaseInsertFails(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org]);
+        $filesBefore = $this->storedFiles();
+
+        // Stesso container per tutta la richiesta; il flush dell'allegato fallisce dopo che il file è già stato scritto
+        $this->client->disableReboot();
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->getEventManager()->addEventListener(Events::preFlush, new class {
+            public function preFlush(PreFlushEventArgs $args): void
+            {
+                throw new \RuntimeException('INSERT simulato fallito');
+            }
+        });
+
+        $this->uploadTo($token, 'vehicle', $vehicle->getId());
+
+        self::assertResponseStatusCodeSame(500);
+        self::assertSame($filesBefore, $this->storedFiles(), 'La compensazione rimuove il file già salvato');
+    }
+
+    /** @return list<string> percorsi dei file nello storage di test */
+    private function storedFiles(): array
+    {
+        $root = (string) static::getContainer()->getParameter('app.attachments_root');
+        if (!is_dir($root)) {
+            return [];
+        }
+
+        $files = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            $files[] = (string) $file;
+        }
+        sort($files);
+
+        return $files;
     }
 }

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '@/api/client';
+import { vehicleKeys } from '@/hooks/useVehicles';
+import { useAuthStore, type User } from '@/stores/useAuthStore';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -67,12 +69,82 @@ export function useRevokeInvitation(orgId: number) {
   });
 }
 
-/** Rimuove un membro accettato (owner/admin). L'owner non è rimovibile. */
+/**
+ * Rimuove un membro accettato (owner/admin). L'owner non è rimovibile.
+ *
+ * Il backend passa i veicoli del membro a chi lo rimuove, fa cadere le sue condivisioni e elimina
+ * gli inviti che aveva spedito: oltre a membri e inviti si invalidano tutti i veicoli
+ * (`vehicleKeys.all` copre lista, dettagli con ownership/permessi, condivisioni e candidati alla
+ * condivisione, che stanno tutti sotto `['vehicles', …]`).
+ */
 export function useRemoveMember(orgId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (memberId: number) =>
       authFetch<void>(`/api/organizations/${orgId}/members/${memberId}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: membersKey(orgId) }),
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: membersKey(orgId) }),
+        qc.invalidateQueries({ queryKey: invitationsKey(orgId) }),
+        qc.invalidateQueries({ queryKey: vehicleKeys.all }),
+      ]),
+  });
+}
+
+interface ChangeMemberRoleVars {
+  memberId: number;
+  role: MemberRole;
+  /** Il membro è l'utente corrente: dopo il cambio le sue membership nello store vanno rilette. */
+  self: boolean;
+}
+
+/**
+ * Allinea lo store al nuovo ruolo dell'utente corrente: rilegge `/api/auth/me`; se la rilettura fallisce
+ * (il ruolo è comunque già cambiato) usa il ruolo del PATCH sulla membership corrispondente. Mai un errore.
+ */
+async function syncOwnMembership(updated: OrgMember): Promise<void> {
+  const store = useAuthStore.getState();
+  try {
+    store.setUser(await authFetch<User>('/api/auth/me'));
+  } catch {
+    const user = useAuthStore.getState().user;
+    if (user) {
+      store.setUser({
+        ...user,
+        memberships: user.memberships.map((m) => (m.id === updated.id ? { ...m, role: updated.role } : m)),
+      });
+    }
+  }
+}
+
+/**
+ * Cambia il ruolo d'organizzazione di un membro (`PATCH .../members/{memberId}`; la matrice dei permessi
+ * è del backend, vedi `lib/memberRoles`). Un declassamento elimina gli inviti pendenti del membro e il
+ * ruolo cambia i veicoli che l'utente vede: si invalidano membri, inviti e tutti i veicoli.
+ *
+ * Se è l'utente corrente a cambiare il PROPRIO ruolo si rilegge `/api/auth/me` e si aggiorna lo store
+ * (come `useUpdateOrganization`), così `SettingsPage` e `MembersCard` riflettono subito il nuovo ruolo.
+ * Se la rilettura fallisce non è un errore dell'operazione (il ruolo è già cambiato): niente toast fuorviante,
+ * le invalidazioni partono comunque. Il ruolo di un ALTRO membro si aggiorna sul suo dispositivo al prossimo caricamento: il backend lo
+ * fa comunque rispettare dalla richiesta successiva.
+ */
+export function useChangeMemberRole(orgId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId, role, self }: ChangeMemberRoleVars) => {
+      const updated = await authFetch<OrgMember>(`/api/organizations/${orgId}/members/${memberId}`, {
+        method: 'PATCH',
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ role }),
+      });
+      if (self) await syncOwnMembership(updated);
+      return updated;
+    },
+    onSuccess: () =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: membersKey(orgId) }),
+        qc.invalidateQueries({ queryKey: invitationsKey(orgId) }),
+        qc.invalidateQueries({ queryKey: vehicleKeys.all }),
+      ]),
   });
 }

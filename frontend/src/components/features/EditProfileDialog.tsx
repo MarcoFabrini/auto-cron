@@ -52,11 +52,15 @@ export function EditProfileDialog({ open, onOpenChange, user }: EditProfileDialo
     defaultValues: { firstName: user.firstName, lastName: user.lastName, email: user.email, currentPassword: '' },
   });
 
+  // Il form si riallinea al profilo solo quando il dialog si apre: caricare o rimuovere la foto crea un
+  // nuovo oggetto `user` nello store e non deve cancellare ciò che si sta digitando.
   useEffect(() => {
     if (open) {
       form.reset({ firstName: user.firstName, lastName: user.lastName, email: user.email, currentPassword: '' });
     }
-  }, [open, user, form]);
+    // Solo al cambio di `open` (chiuso -> aperto): `user` cambia anche per l'avatar, `form` è stabile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const errors = form.formState.errors;
   const emailChanged =

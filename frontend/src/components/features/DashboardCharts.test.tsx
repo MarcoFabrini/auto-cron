@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ReactElement } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18n from '@/i18n';
 import { ApiError, authFetch } from '@/api/client';
@@ -77,23 +77,25 @@ describe('DashboardCharts', () => {
     mockedAuthFetch.mockResolvedValue(withData);
     renderCharts();
 
-    expect(await screen.findByText('Spese mensili')).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Spese mensili' })).toBeInTheDocument();
     expect(mockedAuthFetch).toHaveBeenCalledWith('/api/dashboard/charts?months=12');
-    expect(screen.getByText('Spese per categoria')).toBeInTheDocument();
-    expect(screen.getByText('Km percorsi')).toBeInTheDocument();
-    expect(screen.getByText('Consumo medio (km/l)')).toBeInTheDocument();
-    // Legenda delle spese mensili.
-    expect(screen.getByText('Rifornimenti')).toBeInTheDocument();
-    expect(screen.getByText('Manutenzioni')).toBeInTheDocument();
-    expect(screen.getByText('Spese')).toBeInTheDocument();
-    // Categorie tradotte, con importo.
-    expect(screen.getByText('Assicurazione')).toBeInTheDocument();
-    expect(screen.getByText('Manutenzione')).toBeInTheDocument();
-    expect(screen.getByText('Carburante')).toBeInTheDocument();
-    expect(screen.getByText(/^650,00\s€$/)).toBeInTheDocument();
-    // Una linea per carburante, con il nome tradotto.
-    expect(screen.getByText('Benzina')).toBeInTheDocument();
-    expect(screen.getByText('GPL')).toBeInTheDocument();
+    // Il titolo della card ricompare come didascalia della tabella accessibile.
+    expect(screen.getAllByText('Spese mensili')).toHaveLength(2);
+    expect(screen.getAllByText('Spese per categoria')).toHaveLength(2);
+    expect(screen.getAllByText('Km percorsi')).toHaveLength(2);
+    expect(screen.getAllByText('Consumo medio (km/l)')).toHaveLength(2);
+    // Legenda delle spese mensili (ogni nome è anche intestazione della tabella accessibile).
+    expect(screen.getAllByText('Rifornimenti')).toHaveLength(2);
+    expect(screen.getAllByText('Manutenzioni')).toHaveLength(2);
+    expect(screen.getAllByText('Spese')).toHaveLength(2);
+    // Categorie tradotte, con importo (legenda visiva + riga della tabella).
+    expect(screen.getAllByText('Assicurazione')).toHaveLength(2);
+    expect(screen.getAllByText('Manutenzione')).toHaveLength(2);
+    expect(screen.getAllByText('Carburante')).toHaveLength(2);
+    expect(within(screen.getByRole('table', { name: 'Spese per categoria' })).getByText(/^650,00\s€$/)).toBeInTheDocument();
+    // Una linea per carburante, con il nome tradotto (legenda + intestazione).
+    expect(screen.getAllByText('Benzina')).toHaveLength(2);
+    expect(screen.getAllByText('GPL')).toHaveLength(2);
     expect(screen.queryByText('Nessuna spesa nel periodo.')).not.toBeInTheDocument();
   });
 
@@ -102,10 +104,11 @@ describe('DashboardCharts', () => {
     mockedAuthFetch.mockResolvedValue(withData);
     renderCharts();
 
-    expect(await screen.findByText('Monthly spending')).toBeInTheDocument();
-    expect(screen.getByText('Refuelings')).toBeInTheDocument();
-    expect(screen.getByText('Insurance')).toBeInTheDocument();
-    expect(screen.getByText('LPG')).toBeInTheDocument();
+    expect(await screen.findAllByText('Monthly spending')).toHaveLength(2);
+    const spending = screen.getByRole('table', { name: 'Monthly spending' });
+    expect(within(spending).getByRole('columnheader', { name: 'Refuelings' })).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: 'Spending by category' })).getByRole('rowheader', { name: 'Insurance' })).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: /^Average consumption/ })).getByRole('columnheader', { name: 'LPG' })).toBeInTheDocument();
   });
 
   it('più di 5 categorie: le prime 5 e "Altre categorie"', async () => {
@@ -123,12 +126,12 @@ describe('DashboardCharts', () => {
     });
     renderCharts();
 
-    expect(await screen.findByText('Altre categorie')).toBeInTheDocument();
-    expect(screen.getByText('Pedaggio')).toBeInTheDocument();
+    expect(await screen.findAllByText('Altre categorie')).toHaveLength(2);
+    expect(screen.getAllByText('Pedaggio')).toHaveLength(2);
     expect(screen.queryByText('Parcheggio')).not.toBeInTheDocument();
     expect(screen.queryByText('Multa')).not.toBeInTheDocument();
     // 12,00 + 8,00 delle due categorie raggruppate.
-    expect(screen.getByText(/^20,00\s€$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^20,00\s€$/)).toHaveLength(2);
   });
 
   it('senza dati ogni grafico mostra il proprio messaggio vuoto', async () => {
@@ -140,6 +143,7 @@ describe('DashboardCharts', () => {
     expect(screen.getByText('Nessuna lettura del contachilometri nel periodo.')).toBeInTheDocument();
     expect(screen.getByText('Servono almeno due pieni consecutivi per calcolare il consumo.')).toBeInTheDocument();
     expect(screen.queryByText('Rifornimenti')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
   it('payload malformato: Alert di errore, nessun grafico e nessun crash', async () => {

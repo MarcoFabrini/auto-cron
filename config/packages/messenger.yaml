@@ -5,6 +5,9 @@ framework:
         transports:
             # Doctrine transport: riusa il DB applicativo (tabella messenger_messages),
             # niente broker esterno. async/failed condividono la tabella, separati da queue_name.
+            # auto_setup: false: la tabella la crea la migrazione. Con l'auto-creazione al primo
+            # uso, su un'installazione nuova il worker che parte prima delle migrazioni creava
+            # la tabella e il CREATE TABLE della migrazione poi falliva (api in crash-loop).
             async:
                 dsn: 'doctrine://default'
                 retry_strategy:
@@ -13,11 +16,13 @@ framework:
                     multiplier: 5
                 options:
                     queue_name: async
+                    auto_setup: false
 
             failed:
                 dsn: 'doctrine://default'
                 options:
                     queue_name: failed
+                    auto_setup: false
 
         routing:
             # Notifiche scadenza veicolo → worker async (tabella messenger_messages)

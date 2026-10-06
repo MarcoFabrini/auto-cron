@@ -15,7 +15,7 @@ import {
 } from '@/hooks/useAttachments';
 import { useQueryClient } from '@tanstack/react-query';
 import { downloadAttachment } from '@/api/endpoints/attachments';
-import { formatBytes } from '@/lib/format';
+import { useFormat } from '@/hooks/useFormat';
 import type { Attachment, AttachmentEntityType } from '@/api/types/attachment';
 
 export interface AttachmentListProps {
@@ -89,6 +89,7 @@ interface AttachmentItemProps {
 function AttachmentItem({ attachment, entityType, entityId, readOnly }: AttachmentItemProps) {
   const a = attachment;
   const { t } = useTranslation();
+  const fmt = useFormat();
   const { toast } = useToast();
   const errorMessage = useApiErrorMessage();
   const qc = useQueryClient();
@@ -140,13 +141,14 @@ function AttachmentItem({ attachment, entityType, entityId, readOnly }: Attachme
           <p className="truncate text-xs font-medium" title={a.originalFilename}>
             {a.originalFilename}
           </p>
-          <p className="text-[11px] text-muted-foreground">{formatBytes(a.sizeBytes)}</p>
+          <p className="text-[11px] text-muted-foreground">{fmt.bytes(a.sizeBytes)}</p>
         </div>
         {!readOnly && (
           <button
             type="button"
             onClick={() => setConfirmOpen(true)}
-            className="shrink-0 rounded-md p-1 text-muted-foreground hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // bersaglio da 44px che esce dal padding della riga (-my/-mr) senza ingrandirla
+            className="-my-1.5 -mr-2 flex min-h-touch min-w-touch shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-destructive-text focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={t('actions.delete')}
           >
             <Trash2 className="size-4" />

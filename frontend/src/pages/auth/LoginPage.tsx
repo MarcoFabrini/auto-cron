@@ -1,13 +1,16 @@
-import { useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, FormField, Input, Spinner, Text } from '@/components/ui';
 import { AuthLayout } from '@/components/layout';
-import { AuthBrand } from '@/components/features';
+import { AuthBrand, AuthLink } from '@/components/features';
 import { useLogin } from '@/hooks/useLogin';
 import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
+import { useFieldErrorMessage } from '@/hooks/useFieldErrorMessage';
 import { useRegistrationOpen } from '@/hooks/useRegistrationOpen';
 import { safeNextPath } from '@/lib/safeNext';
+import { loginSchema, type LoginFormData } from '@/schemas/auth.schema';
 
 /**
  * LoginPage — composta da AuthLayout + AuthBrand + form di FormField/Input/Button.
@@ -22,15 +25,19 @@ export function LoginPage() {
   // Link di registrazione solo a istanza vuota (primo avvio): poi si entra su invito.
   const { data: registration } = useRegistrationOpen();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const form = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  });
+  const errors = form.formState.errors;
+  const tErr = useFieldErrorMessage();
 
   // Redirect post-login: solo path interni (evita open-redirect).
   const next = params.get('next');
   const dest = safeNextPath(next);
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  // Lo schema pulisce l'email dagli spazi e blocca i campi vuoti prima di chiamare il server.
+  function onSubmit({ email, password }: LoginFormData) {
     mutate({ email, password }, { onSuccess: () => navigate(dest, { replace: true }) });
   }
 
@@ -38,42 +45,37 @@ export function LoginPage() {
     <AuthLayout>
       <AuthBrand subtitleKey="auth.login.title" />
 
-      <form onSubmit={onSubmit} className="space-y-4" noValidate>
-        <FormField label={t('auth.login.email')} required>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        <FormField label={t('auth.login.email')} error={tErr(errors.email?.message)} required>
           {(id) => (
             <Input
               id={id}
               type="email"
-              required
               autoComplete="email"
               autoCapitalize="none"
               inputMode="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              invalid={!!errors.email}
+              {...form.register('email')}
             />
           )}
         </FormField>
 
-        <FormField label={t('auth.login.password')} required>
+        <FormField label={t('auth.login.password')} error={tErr(errors.password?.message)} required>
           {(id) => (
             <Input
               id={id}
               type="password"
-              required
               autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              invalid={!!errors.password}
+              {...form.register('password')}
             />
           )}
         </FormField>
 
         <div className="text-right">
-          <Link
-            to="/forgot-password"
-            className="text-sm font-medium text-primary hover:underline"
-          >
+          <AuthLink to="/forgot-password" className="text-sm">
             {t('auth.forgot.link')}
-          </Link>
+          </AuthLink>
         </div>
 
         {error && <Alert variant="error">{errorMessage(error)}</Alert>}
@@ -86,9 +88,7 @@ export function LoginPage() {
       {registration?.open && (
         <Text variant="muted" className="text-center">
           {t('auth.login.no_account')}{' '}
-          <Link to="/register" className="font-medium text-primary hover:underline">
-            {t('auth.login.register')}
-          </Link>
+          <AuthLink to="/register">{t('auth.login.register')}</AuthLink>
         </Text>
       )}
     </AuthLayout>

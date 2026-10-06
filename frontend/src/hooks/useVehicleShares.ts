@@ -1,5 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authFetch } from '@/api/client';
+import { getTransferCandidates, transferVehicle } from '@/api/endpoints/vehicles';
+import type { TransferVehicleDto } from '@/api/types/vehicleTransfer';
+import { dashboardKeys } from '@/hooks/useDashboardCharts';
+import { reminderKeys } from '@/hooks/useReminders';
+import { vehicleKeys } from '@/hooks/useVehicles';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -82,6 +87,40 @@ export function useRevokeShare(vehicleId: number) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: sharesKey(vehicleId) });
       void qc.invalidateQueries({ queryKey: candidatesKey(vehicleId) });
+    },
+  });
+}
+
+/** Candidati al trasferimento sotto il dettaglio del veicolo: `vehicleKeys.all`/`detail(id)` li coprono per prefisso. */
+const transferCandidatesKey = (vehicleId: number) => [...vehicleKeys.detail(vehicleId), 'transfer-candidates'] as const;
+
+/**
+ * Membri accettati dell'org (solo nome, qualsiasi ruolo) a cui cedere il veicolo, escluso il proprietario
+ * attuale. `enabled` serve a chiedere l'elenco solo quando il dialog è aperto.
+ */
+export function useTransferCandidates(vehicleId: number, enabled = true) {
+  return useQuery({
+    queryKey: transferCandidatesKey(vehicleId),
+    queryFn: () => getTransferCandidates(vehicleId),
+    enabled: vehicleId > 0 && enabled,
+  });
+}
+
+/**
+ * Cede la proprietà del veicolo. Cambia chi lo possiede: il backend sposta con lui totali e grafici
+ * (storico incluso), promemoria e notifiche, e `ownership`/`permissions` di chi cede. Si invalidano quindi
+ * tutti i veicoli (`vehicleKeys.all`: liste, dettagli con statistiche e grafici del veicolo, condivisioni,
+ * candidati), la dashboard e i promemoria. Non si attende il refetch: se chi cede perde l'accesso la
+ * pagina naviga subito altrove.
+ */
+export function useTransferVehicle(vehicleId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TransferVehicleDto) => transferVehicle(vehicleId, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: vehicleKeys.all });
+      void qc.invalidateQueries({ queryKey: dashboardKeys.all });
+      void qc.invalidateQueries({ queryKey: reminderKeys.all });
     },
   });
 }

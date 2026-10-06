@@ -25,20 +25,36 @@ class RefreshTokenRepository extends ServiceEntityRepository
         return $rt?->isValid() ? $rt : null;
     }
 
-    /** Revoca atomica: true solo per la richiesta che passa per prima (niente doppia rotazione concorrente). */
-    public function revokeIfActive(RefreshToken $token): bool
+    /** Il token dato il suo hash, in qualsiasi stato (anche ruotato, revocato o scaduto). */
+    public function findOneByHash(string $hash): ?RefreshToken
     {
+        return $this->findOneBy(['token' => $hash]);
+    }
+
+    /**
+     * Rotazione atomica: revoca il token e lo segna come ruotato. True solo per la richiesta che passa per
+     * prima (niente doppia rotazione concorrente).
+     */
+    public function rotateIfActive(RefreshToken $token): bool
+    {
+        $now = new \DateTimeImmutable();
         $affected = $this->createQueryBuilder('rt')
             ->update()
             ->set('rt.revokedAt', ':now')
+            ->set('rt.rotatedAt', ':now')
             ->where('rt.id = :id')
             ->andWhere('rt.revokedAt IS NULL')
-            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('now', $now)
             ->setParameter('id', $token->getId())
             ->getQuery()
             ->execute();
 
-        return $affected === 1;
+        if ($affected !== 1) {
+            return false;
+        }
+        $token->markRotated($now);
+
+        return true;
     }
 
     public function countActiveForUser(User $user): int
@@ -65,12 +81,31 @@ class RefreshTokenRepository extends ServiceEntityRepository
             ->execute();
     }
 
+    /** Revoca tutti i token ancora attivi della famiglia (la sessione intera). Ritorna quanti ne ha revocati. */
+    public function revokeFamily(string $familyId): int
+    {
+        return (int) $this->createQueryBuilder('rt')
+            ->update()
+            ->set('rt.revokedAt', ':now')
+            ->where('rt.familyId = :family')
+            ->andWhere('rt.revokedAt IS NULL')
+            ->setParameter('now', new \DateTimeImmutable())
+            ->setParameter('family', $familyId)
+            ->getQuery()
+            ->execute();
+    }
+
+    /**
+     * Cancella i token scaduti o revocati prima di `$olderThan`. Un token ruotato ancora non scaduto resta
+     * comunque: finché potrebbe essere ripresentato serve per riconoscere il riuso (RefreshTokenService).
+     */
     public function deleteExpiredAndRevoked(\DateTimeImmutable $olderThan): int
     {
         return (int) $this->createQueryBuilder('rt')
             ->delete()
-            ->where('rt.expiresAt < :cutoff OR rt.revokedAt < :cutoff')
+            ->where('rt.expiresAt < :cutoff OR (rt.revokedAt < :cutoff AND (rt.rotatedAt IS NULL OR rt.expiresAt < :now))')
             ->setParameter('cutoff', $olderThan)
+            ->setParameter('now', new \DateTimeImmutable())
             ->getQuery()
             ->execute();
     }

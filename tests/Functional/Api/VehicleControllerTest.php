@@ -7,14 +7,19 @@ namespace App\Tests\Functional\Api;
 use App\Entity\Organization;
 use App\Entity\User;
 use App\Entity\Vehicle;
+use App\Entity\VehicleShare;
+use App\Enum\FuelType;
 use App\Enum\OrgRole;
 use App\Enum\ShareRole;
 use App\Repository\VehicleRepository;
+use App\Tests\Factory\OrganizationFactory;
 use App\Tests\Factory\OrganizationMemberFactory;
+use App\Tests\Factory\RefuelingFactory;
 use App\Tests\Factory\UserFactory;
 use App\Tests\Factory\VehicleFactory;
 use App\Tests\Factory\VehicleShareFactory;
 use App\Tests\Support\ApiTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 
 final class VehicleControllerTest extends ApiTestCase
@@ -38,6 +43,75 @@ final class VehicleControllerTest extends ApiTestCase
 
         $this->jsonRequest('GET', '/api/vehicles', accessToken: $token);
         self::assertCount(1, $this->jsonBody());
+    }
+
+    public function testArchivedListContainsOnlyArchivedVehiclesWithArchivedAt(): void
+    {
+        [$owner, $org, $token] = $this->createAuthenticatedUser();
+        $active = VehicleFactory::createOne(['organization' => $org, 'name' => 'Attiva']);
+        $archived = VehicleFactory::createOne(['organization' => $org, 'name' => 'Archiviata', 'archivedAt' => new \DateTimeImmutable('2026-01-15 10:00:00')]);
+        foreach ([$active, $archived] as $v) {
+            VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $v, 'user' => $owner]);
+        }
+
+        $this->jsonRequest('GET', '/api/vehicles?archived=1', accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        /** @var list<array<string, mixed>> $list */
+        $list = $this->jsonBody();
+        self::assertSame(['Archiviata'], array_column($list, 'name'));
+        self::assertStringStartsWith('2026-01-15', (string) $list[0]['archivedAt']);
+        self::assertSame('owned', $list[0]['ownership']);
+        self::assertTrue($list[0]['permissions']['canDelete'], 'Serve per mostrare Ripristina');
+
+        // Il default non cambia: solo gli attivi, con archivedAt null
+        $this->jsonRequest('GET', '/api/vehicles', accessToken: $token);
+        /** @var list<array<string, mixed>> $default */
+        $default = $this->jsonBody();
+        self::assertSame(['Attiva'], array_column($default, 'name'));
+        self::assertArrayHasKey('archivedAt', $default[0]);
+        self::assertNull($default[0]['archivedAt']);
+
+        // Valori diversi da vero non attivano il filtro
+        $this->jsonRequest('GET', '/api/vehicles?archived=0', accessToken: $token);
+        self::assertSame(['Attiva'], array_column($this->jsonBody(), 'name'));
+    }
+
+    public function testArchivedListRespectsAccessRules(): void
+    {
+        [$owner, $org, $ownerToken] = $this->createAuthenticatedUser();
+        $stranger = $this->memberOf($org, 'Senza', 'Share');
+        $reader = $this->memberOf($org, 'Solo', 'Lettura');
+        $past = new \DateTimeImmutable('-1 month');
+
+        $ownersCar = VehicleFactory::createOne(['organization' => $org, 'name' => 'Archiviata del titolare', 'archivedAt' => $past]);
+        $sharedCar = VehicleFactory::createOne(['organization' => $org, 'name' => 'Archiviata condivisa', 'archivedAt' => $past]);
+        $hiddenCar = VehicleFactory::createOne(['organization' => $org, 'name' => 'Archiviata nascosta', 'archivedAt' => $past]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $ownersCar, 'user' => $owner]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $sharedCar, 'user' => $owner]);
+        VehicleShareFactory::createOne(['vehicle' => $sharedCar, 'user' => $reader]);
+        VehicleShareFactory::new()->asAdmin()->create(['vehicle' => $hiddenCar, 'user' => $owner]);
+        // Altra org: non compare mai, nemmeno per chi è owner dell'org attiva
+        VehicleFactory::createOne(['name' => 'Archiviata di un\'altra org', 'archivedAt' => $past]);
+
+        // Member senza share: nessuna archiviata
+        $this->jsonRequest('GET', '/api/vehicles?archived=1', accessToken: $this->tokenForOrg($stranger, $org));
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->jsonBody());
+
+        // Share in sola lettura: vede la sua, marcata shared
+        $this->jsonRequest('GET', '/api/vehicles?archived=1', accessToken: $this->tokenForOrg($reader, $org));
+        /** @var list<array<string, mixed>> $readerList */
+        $readerList = $this->jsonBody();
+        self::assertSame(['Archiviata condivisa'], array_column($readerList, 'name'));
+        self::assertSame('shared', $readerList[0]['ownership']);
+        self::assertFalse($readerList[0]['permissions']['canDelete']);
+
+        // Owner dell'org: tutte le archiviate della sua org, e nessuna di un'altra
+        $this->jsonRequest('GET', '/api/vehicles?archived=1', accessToken: $ownerToken);
+        $names = array_column($this->jsonBody(), 'name');
+        sort($names);
+        self::assertSame(['Archiviata condivisa', 'Archiviata del titolare', 'Archiviata nascosta'], $names);
     }
 
     public function testGetReturnsVehicleDetail(): void
@@ -79,6 +153,58 @@ final class VehicleControllerTest extends ApiTestCase
         self::assertCount(1, $repo->findAll());
     }
 
+    /** @return array<string, mixed> */
+    private function newVehiclePayload(string $name = 'Nuova'): array
+    {
+        return ['name' => $name, 'brand' => 'Fiat', 'model' => 'Panda', 'year' => 2019, 'type' => 'car', 'fuelType' => 'gasoline', 'initialKm' => 0];
+    }
+
+    /** Tetto di test: 3 veicoli (vedi `app_vehicles_org_limit_default` in `when@test`). */
+    public function testCreateOverTheOrganizationLimitIsRefusedAndPersistsNothing(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        // Due attivi e uno archiviato: l'archiviato conta, quindi l'org è al tetto.
+        VehicleFactory::createMany(2, ['organization' => $org]);
+        VehicleFactory::createOne(['organization' => $org, 'archivedAt' => new \DateTimeImmutable()]);
+
+        $this->jsonRequest('POST', '/api/vehicles', $this->newVehiclePayload(), accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(
+            ['type' => 'about:blank', 'title' => 'vehicle.limit_reached', 'status' => 422],
+            $this->jsonBody(),
+        );
+        $em = static::getContainer()->get(EntityManagerInterface::class);
+        $em->clear();
+        self::assertSame(3, static::getContainer()->get(VehicleRepository::class)->countByOrganization($org));
+        self::assertSame(0, $em->getRepository(VehicleShare::class)->count(['user' => $user]), 'nessuno share di proprietario creato');
+    }
+
+    public function testCreateUpToTheOrganizationLimitWorksAndOtherOrganizationsDoNotCount(): void
+    {
+        [$user, $org, $token] = $this->createAuthenticatedUser();
+        VehicleFactory::createMany(5, ['organization' => OrganizationFactory::createOne()]);
+        VehicleFactory::createMany(2, ['organization' => $org]);
+
+        $this->jsonRequest('POST', '/api/vehicles', $this->newVehiclePayload('Il terzo'), accessToken: $token);
+        self::assertResponseStatusCodeSame(201, 'Il terzo veicolo è l\'ultimo ammesso');
+
+        $this->jsonRequest('POST', '/api/vehicles', $this->newVehiclePayload('Il quarto'), accessToken: $token);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('vehicle.limit_reached', $this->jsonBody()['title']);
+    }
+
+    public function testUnarchiveIsNotAffectedByTheLimit(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        VehicleFactory::createMany(2, ['organization' => $org]);
+        $archived = VehicleFactory::createOne(['organization' => $org, 'archivedAt' => new \DateTimeImmutable()]);
+
+        $this->jsonRequest('POST', '/api/vehicles/'.$archived->getId().'/unarchive', accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+    }
+
     public function testCreateValidatesRequiredFields(): void
     {
         [, , $token] = $this->createAuthenticatedUser();
@@ -93,6 +219,32 @@ final class VehicleControllerTest extends ApiTestCase
         ], accessToken: $token);
 
         self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testInitialKmIsBoundedInsteadOfOverflowingTheColumn(): void
+    {
+        [, , $token] = $this->createAuthenticatedUser();
+        $payload = ['name' => 'Km', 'brand' => 'Fiat', 'model' => 'Panda', 'year' => 2019, 'type' => 'car', 'fuelType' => 'gasoline'];
+
+        // Prima 3.000.000.000 superava l'INT della colonna e finiva in un 500
+        $this->jsonRequest('POST', '/api/vehicles', $payload + ['initialKm' => 3_000_000_000], accessToken: $token);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('validation_failed', $this->jsonBody()['title']);
+        self::assertSame([['field' => 'initialKm', 'message' => 'common.km_too_large']], $this->jsonBody()['errors']);
+
+        $this->jsonRequest('POST', '/api/vehicles', $payload + ['initialKm' => 10_000_000], accessToken: $token);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame([['field' => 'initialKm', 'message' => 'common.km_too_large']], $this->jsonBody()['errors']);
+
+        // I negativi mantengono la propria chiave
+        $this->jsonRequest('POST', '/api/vehicles', $payload + ['initialKm' => -1], accessToken: $token);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame([['field' => 'initialKm', 'message' => 'common.too_small']], $this->jsonBody()['errors']);
+
+        // Il massimo consentito passa
+        $this->jsonRequest('POST', '/api/vehicles', $payload + ['initialKm' => 9_999_999], accessToken: $token);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame(9_999_999, $this->jsonBody()['initialKm']);
     }
 
     public function testUpdateChangesFields(): void
@@ -111,6 +263,114 @@ final class VehicleControllerTest extends ApiTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame('new name', $this->jsonBody()['name']);
+    }
+
+    /**
+     * Veicolo bi-fuel (benzina + GPL) con un rifornimento per ciascun carburante nell'org dell'utente.
+     *
+     * @return array{0: Vehicle, 1: string}
+     */
+    private function biFuelVehicleWithRefuelings(bool $archived = false): array
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne([
+            'organization' => $org,
+            'fuelType' => FuelType::GASOLINE,
+            'secondaryFuelType' => FuelType::LPG,
+            'archivedAt' => $archived ? new \DateTimeImmutable('2026-01-15') : null,
+        ]);
+        foreach ([FuelType::GASOLINE, FuelType::LPG] as $fuel) {
+            RefuelingFactory::createOne(['organization' => $org, 'vehicle' => $vehicle, 'fuelType' => $fuel]);
+        }
+
+        return [$vehicle, $token];
+    }
+
+    /** @return array<string, mixed> */
+    private function updatePayload(?string $fuelType, ?string $secondary): array
+    {
+        return ['name' => 'Auto', 'brand' => 'Fiat', 'model' => 'Panda', 'year' => 2020, 'type' => 'car', 'fuelType' => $fuelType, 'secondaryFuelType' => $secondary];
+    }
+
+    public function testUpdateRejectsDroppingASecondaryFuelUsedByRefuelings(): void
+    {
+        [$vehicle, $token] = $this->biFuelVehicleWithRefuelings();
+
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), $this->updatePayload('gasoline', null), accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('validation_failed', $this->jsonBody()['title']);
+        self::assertSame([['field' => 'secondaryFuelType', 'message' => 'vehicle.fuel_type_in_use']], $this->jsonBody()['errors']);
+
+        // Nulla è stato modificato
+        $this->jsonRequest('GET', '/api/vehicles/'.$vehicle->getId(), accessToken: $token);
+        self::assertSame('lpg', $this->jsonBody()['secondaryFuelType']);
+    }
+
+    public function testUpdateRejectsReplacingAPrimaryFuelUsedByRefuelings(): void
+    {
+        [$vehicle, $token] = $this->biFuelVehicleWithRefuelings();
+
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), $this->updatePayload('diesel', 'lpg'), accessToken: $token);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame([['field' => 'fuelType', 'message' => 'vehicle.fuel_type_in_use']], $this->jsonBody()['errors']);
+    }
+
+    public function testUpdateDroppingAnUnusedFuelWorks(): void
+    {
+        [, $org, $token] = $this->createAuthenticatedUser();
+        $vehicle = VehicleFactory::createOne(['organization' => $org, 'fuelType' => FuelType::GASOLINE, 'secondaryFuelType' => FuelType::LPG]);
+        // Solo benzina rifornita: il GPL non è mai stato usato
+        RefuelingFactory::createOne(['organization' => $org, 'vehicle' => $vehicle, 'fuelType' => FuelType::GASOLINE]);
+
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), $this->updatePayload('gasoline', null), accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertNull($this->jsonBody()['secondaryFuelType']);
+    }
+
+    public function testUpdateAddingAFuelAndSwappingFuelsWorkEvenWithRefuelings(): void
+    {
+        [$vehicle, $token] = $this->biFuelVehicleWithRefuelings();
+
+        // Scambio primario/secondario: nessun carburante tolto
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), $this->updatePayload('lpg', 'gasoline'), accessToken: $token);
+        self::assertResponseIsSuccessful();
+        self::assertSame('lpg', $this->jsonBody()['fuelType']);
+
+        // Mono-carburante che diventa bi-fuel: carburante aggiunto
+        [, $org, $token2] = $this->createAuthenticatedUser();
+        $mono = VehicleFactory::createOne(['organization' => $org, 'fuelType' => FuelType::DIESEL, 'secondaryFuelType' => null]);
+        RefuelingFactory::createOne(['organization' => $org, 'vehicle' => $mono, 'fuelType' => FuelType::DIESEL]);
+        $this->jsonRequest('PUT', '/api/vehicles/'.$mono->getId(), $this->updatePayload('diesel', 'lpg'), accessToken: $token2);
+        self::assertResponseIsSuccessful();
+        self::assertSame('lpg', $this->jsonBody()['secondaryFuelType']);
+    }
+
+    public function testUpdateWithoutChangingFuelsWorksWithRefuelings(): void
+    {
+        [$vehicle, $token] = $this->biFuelVehicleWithRefuelings();
+
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), ['name' => 'Rinominata'] + $this->updatePayload('gasoline', 'lpg'), accessToken: $token);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame('Rinominata', $this->jsonBody()['name']);
+    }
+
+    public function testArchivedVehicleStaysEditableAndKeepsTheFuelRule(): void
+    {
+        [$vehicle, $token] = $this->biFuelVehicleWithRefuelings(archived: true);
+
+        // Una modifica che non tocca i carburanti resta consentita sull'archiviato
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), ['name' => 'Archiviata rinominata'] + $this->updatePayload('gasoline', 'lpg'), accessToken: $token);
+        self::assertResponseIsSuccessful();
+        self::assertNotNull($this->jsonBody()['archivedAt']);
+
+        // Togliere un carburante usato resta vietato anche su un archiviato
+        $this->jsonRequest('PUT', '/api/vehicles/'.$vehicle->getId(), $this->updatePayload('gasoline', null), accessToken: $token);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('vehicle.fuel_type_in_use', $this->jsonBody()['errors'][0]['message']);
     }
 
     public function testDeleteRemovesVehicle(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Reminder;
+use App\Enum\ReminderUrgency;
 use App\Message\SendReminderNotificationMessage;
 use App\Repository\ReminderRepository;
 use App\Service\AppClock;
@@ -27,6 +28,11 @@ use Symfony\Component\Messenger\MessageBusInterface;
  * Idempotenza: una notifica per livello, non una al giorno. Il livello notificato sta sul
  * promemoria (`notifiedUrgency`) ed è preso dall'handler con un claim atomico prima dell'invio; rieseguire
  * il job prima che l'handler giri accoda messaggi doppi, ma l'handler ne scarta i doppioni.
+ *
+ * Riarmo: se i km del veicolo scendono (un refuso corretto) e un promemoria a km risulta a un livello
+ * più basso di quello già notificato, il livello notificato viene abbassato; così il superamento
+ * reale della soglia notificherà di nuovo. È l'unico punto che lo fa (e l'unico che scrive), quindi
+ * `--dry-run` non riarma nulla.
  */
 #[AsCommand(name: 'app:reminders:dispatch', description: 'Dispatch reminder notifications (date and km based)')]
 final class DispatchRemindersCommand extends Command
@@ -54,6 +60,7 @@ final class DispatchRemindersCommand extends Command
         /** @var array<int, int> $kmByVehicle km attuali per veicolo: un solo calcolo anche con più promemoria */
         $kmByVehicle = [];
         $due = [];
+        $rearmed = 0;
 
         foreach ($this->reminderRepo->findNotificationCandidates() as $r) {
             $currentKm = null;
@@ -63,9 +70,25 @@ final class DispatchRemindersCommand extends Command
             }
 
             $urgency = $r->urgency($currentKm, $today);
+
+            // I km possono scendere (refuso corretto): se il livello calcolato è sotto quello già
+            // notificato lo si abbassa, altrimenti il vero superamento della soglia non notificherebbe
+            // mai. Si abbassa al livello calcolato (non a null) per non rimandare un "in scadenza" già dato.
+            $notified = $r->getNotifiedUrgency();
+            if ($currentKm !== null && $notified !== null && $urgency->rank() < $notified->rank()) {
+                if (!$dryRun && $this->reminderRepo->rearmNotification((int) $r->getId(), $notified, $urgency === ReminderUrgency::OK ? null : $urgency)) {
+                    ++$rearmed;
+                }
+                continue; // a un livello più basso di quello già notificato non c'è nulla da inviare
+            }
+
             if ($r->needsNotification($urgency)) {
                 $due[] = [$r, $urgency];
             }
+        }
+
+        if ($rearmed > 0) {
+            $io->writeln(sprintf('%d promemoria a km riarmati (km scesi sotto il livello già notificato).', $rearmed));
         }
 
         if ($due === []) {

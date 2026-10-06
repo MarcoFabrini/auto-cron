@@ -23,7 +23,7 @@ final class VehicleRequest
         #[Assert\Length(max: 100)]
         public string $model = '',
 
-        #[Assert\Range(min: 1900, max: 2100)]
+        #[Assert\Range(min: 1900, max: 2100, notInRangeMessage: 'vehicle.year.out_of_range')]
         public int $year = 2024,
 
         public VehicleType $type = VehicleType::CAR,
@@ -38,7 +38,10 @@ final class VehicleRequest
         #[Assert\Length(max: 17)]
         public ?string $vin = null,
 
+        // Negativo → common.too_small (PositiveOrZero); oltre il massimo → common.km_too_large. Un Range con
+        // entrambi i limiti darebbe lo stesso messaggio "troppo grande" anche ai negativi.
         #[Assert\PositiveOrZero]
+        #[Assert\LessThanOrEqual(value: 9_999_999, message: 'common.km_too_large')]
         public int $initialKm = 0,
 
         #[Assert\Length(max: 5000)]

@@ -2,6 +2,11 @@ import { authFetch } from '@/api/client';
 import type { CreateVehicleDto, UpdateVehicleDto, Vehicle } from '@/api/types/vehicle';
 import type { VehicleStats } from '@/api/types/vehicleStats';
 import { dashboardChartsSchema, type DashboardCharts } from '@/api/types/dashboardCharts';
+import {
+  transferCandidatesSchema,
+  type TransferCandidate,
+  type TransferVehicleDto,
+} from '@/api/types/vehicleTransfer';
 
 /**
  * Vehicle API endpoints — thin wrapper su authFetch.
@@ -10,6 +15,11 @@ import { dashboardChartsSchema, type DashboardCharts } from '@/api/types/dashboa
 
 export function listVehicles() {
   return authFetch<Vehicle[]>('/api/vehicles');
+}
+
+/** Solo i veicoli archiviati a cui l'utente ha accesso (stesse regole della lista normale). */
+export function listArchivedVehicles() {
+  return authFetch<Vehicle[]>('/api/vehicles?archived=1');
 }
 
 export function getVehicle(id: number) {
@@ -52,4 +62,19 @@ export function getVehicleStats(id: number) {
 export async function getVehicleCharts(id: number, months: number): Promise<DashboardCharts> {
   const raw = await authFetch<unknown>(`/api/vehicles/${id}/charts?months=${months}`);
   return dashboardChartsSchema.parse(raw);
+}
+
+/** Membri dell'organizzazione del veicolo a cui lo si può cedere (esclusi il proprietario attuale e chi non è accettato). */
+export async function getTransferCandidates(id: number): Promise<TransferCandidate[]> {
+  const raw = await authFetch<unknown>(`/api/vehicles/${id}/transfer-candidates`);
+  return transferCandidatesSchema.parse(raw);
+}
+
+/** Cede la proprietà del veicolo: 204 senza corpo. */
+export function transferVehicle(id: number, body: TransferVehicleDto) {
+  return authFetch<void>(`/api/vehicles/${id}/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }

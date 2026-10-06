@@ -11,14 +11,25 @@ export const expenseSchema = z
     amount: decimalString(2, { maxIntegerDigits: 8 }),
     recurring: z.boolean(),
     recurringPeriod: z.enum(RECURRING_PERIODS).nullable().optional(),
+    // Ultima data di addebito (inclusa); vuota = la spesa continua finché non viene disdetta.
+    recurringUntil: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'common.invalid_date')
+      .nullable()
+      .optional(),
     notes: z.string().max(2000).nullable().optional(),
   })
   .refine((d) => !d.recurring || !!d.recurringPeriod, {
     message: 'expense.recurring_period.required',
     path: ['recurringPeriod'],
   })
-  // Il periodo vale solo per le spese ricorrenti: se l'utente lo sceglie e poi disattiva "ricorrente",
-  // non va inviato (il backend lo rifiuta come incoerente).
-  .transform((d) => (d.recurring ? d : { ...d, recurringPeriod: null }));
+  // Le date ISO si confrontano come stringhe; la fine non può precedere il primo addebito.
+  .refine((d) => !d.recurring || !d.recurringUntil || d.recurringUntil >= d.occurredAt, {
+    message: 'expense.recurring_until.before_start',
+    path: ['recurringUntil'],
+  })
+  // Periodo e data di fine valgono solo per le spese ricorrenti: se l'utente li imposta e poi disattiva
+  // "ricorrente", non vanno inviati (il backend li rifiuta come incoerenti).
+  .transform((d) => (d.recurring ? d : { ...d, recurringPeriod: null, recurringUntil: null }));
 
 export type ExpenseFormData = z.infer<typeof expenseSchema>;

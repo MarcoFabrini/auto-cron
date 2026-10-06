@@ -19,7 +19,7 @@ final class MaintenanceRequest
         #[Assert\Date]
         public string $performedAt = '',
 
-        #[Assert\Range(min: 0, max: 9_999_999)]
+        #[Assert\Range(min: 0, max: 9_999_999, notInRangeMessage: 'common.km_too_large')]
         public int $km = 0,
 
         public MaintenanceType $type = MaintenanceType::OTHER,

@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional\Multitenancy;
 
+use App\Entity\Organization;
+use App\Entity\Vehicle;
 use App\Enum\OrgRole;
 use App\Enum\ShareRole;
+use App\Tests\Factory\ExpenseFactory;
+use App\Tests\Factory\MaintenanceFactory;
 use App\Tests\Factory\OrganizationMemberFactory;
+use App\Tests\Factory\RefuelingFactory;
+use App\Tests\Factory\ReminderFactory;
 use App\Tests\Factory\VehicleFactory;
 use App\Tests\Factory\VehicleShareFactory;
 use App\Tests\Support\ApiTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Test di sicurezza trasversali: verificano che un utente NON possa accedere
@@ -200,5 +207,78 @@ final class TenantIsolationTest extends ApiTestCase
 
         $this->jsonRequest('GET', '/api/vehicles/'.$vehicleId, accessToken: $otherToken);
         self::assertResponseStatusCodeSame(403);
+    }
+
+    /**
+     * Ogni risorsa legata a un veicolo è raggiungibile per id solo dalla propria organizzazione:
+     * da un'altra è 404 (non 403, così non si scopre nemmeno che l'id esiste) e il dato non cambia.
+     *
+     * @param array<string, mixed> $body payload valido (il veicolo è quello dell'org dell'attaccante)
+     */
+    #[DataProvider('recordsByIdEndpoints')]
+    public function testRecordOfAnotherOrganizationIsNotReachableById(
+        string $resource,
+        string $notFoundTitle,
+        string $method,
+        string $pathSuffix,
+        array $body,
+    ): void {
+        [, $orgA, $tokenA] = $this->createAuthenticatedUser();
+        $vehicleA = VehicleFactory::createOne(['organization' => $orgA]);
+        [, $orgB, $tokenB] = $this->createAuthenticatedUser();
+        $vehicleB = VehicleFactory::createOne(['organization' => $orgB]);
+        $id = $this->createRecord($resource, $orgB, $vehicleB);
+        $url = '/api/'.$resource.'/'.$id;
+
+        if (isset($body['vehicleId'])) {
+            $body['vehicleId'] = $vehicleA->getId();
+        }
+        $this->jsonRequest($method, $url.$pathSuffix, $body === [] ? null : $body, accessToken: $tokenA);
+
+        self::assertResponseStatusCodeSame(404, "$method $url$pathSuffix da un'altra org deve essere 404");
+        self::assertSame($notFoundTitle, $this->jsonBody()['title']);
+
+        // Controllo: il dato esiste ed è intatto per chi ne è il proprietario.
+        $this->jsonRequest('GET', $url, accessToken: $tokenB);
+        self::assertResponseIsSuccessful();
+        self::assertSame($id, $this->jsonBody()['id']);
+        self::assertSame($vehicleB->getId(), $this->jsonBody()['vehicleId'] ?? $this->jsonBody()['vehicle']['id'] ?? null);
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string, string, array<string, mixed>}>
+     */
+    public static function recordsByIdEndpoints(): iterable
+    {
+        $expense = ['vehicleId' => 0, 'occurredAt' => '2026-01-10', 'description' => 'hack', 'amount' => '10.00'];
+        $refueling = ['vehicleId' => 0, 'refueledAt' => '2026-01-10', 'km' => 1000, 'liters' => '40.000', 'pricePerLiter' => '1.8000'];
+        $maintenance = ['vehicleId' => 0, 'performedAt' => '2026-01-10', 'km' => 1000, 'type' => 'oil_change', 'description' => 'hack'];
+        $reminder = ['vehicleId' => 0, 'description' => 'hack', 'dueDate' => '2030-01-01'];
+
+        foreach ([
+            'expenses' => ['expense.not_found', $expense],
+            'refuelings' => ['refueling.not_found', $refueling],
+            'maintenances' => ['maintenance.not_found', $maintenance],
+            'reminders' => ['reminder.not_found', $reminder],
+        ] as $resource => [$title, $payload]) {
+            yield "$resource get" => [$resource, $title, 'GET', '', []];
+            yield "$resource update" => [$resource, $title, 'PUT', '', $payload];
+            yield "$resource delete" => [$resource, $title, 'DELETE', '', []];
+        }
+        yield 'reminders complete' => ['reminders', 'reminder.not_found', 'POST', '/complete', []];
+    }
+
+    private function createRecord(string $resource, Organization $org, Vehicle $vehicle): int
+    {
+        $attrs = ['organization' => $org, 'vehicle' => $vehicle];
+        $record = match ($resource) {
+            'expenses' => ExpenseFactory::createOne($attrs),
+            'refuelings' => RefuelingFactory::createOne($attrs),
+            'maintenances' => MaintenanceFactory::createOne($attrs),
+            'reminders' => ReminderFactory::createOne($attrs),
+            default => throw new \LogicException("Risorsa sconosciuta: $resource"),
+        };
+
+        return (int) $record->getId();
     }
 }

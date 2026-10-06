@@ -17,7 +17,7 @@ const alertVariants = cva(
       variant: {
         info: 'border-border bg-card text-card-foreground [&>svg]:text-primary',
         error:
-          'border-destructive/50 bg-destructive/10 text-destructive [&>svg]:text-destructive dark:border-destructive',
+          'border-destructive/50 bg-destructive/10 text-destructive-text [&>svg]:text-destructive-text dark:border-destructive',
         success:
           'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400 [&>svg]:text-green-600',
         warning:

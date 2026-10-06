@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useResendVerification } from '@/hooks/useAccount';
 import { useToast } from '@/hooks/useToast';
+import { useApiErrorMessage } from '@/hooks/useApiErrorMessage';
 
 /**
  * Banner non bloccante mostrato agli utenti con email non ancora verificata.
@@ -11,6 +12,7 @@ export function EmailVerificationBanner() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
+  const errorMessage = useApiErrorMessage();
   const { mutate, isPending } = useResendVerification();
 
   if (!user || user.emailVerified) return null;
@@ -24,9 +26,12 @@ export function EmailVerificationBanner() {
         onClick={() =>
           mutate(undefined, {
             onSuccess: () => toast({ title: t('auth.verify.resent'), variant: 'success' }),
+            // 429 (troppi invii) o rete assente: senza avviso l'utente crederebbe che la mail sia partita.
+            onError: (e) => toast({ title: errorMessage(e), variant: 'error' }),
           })
         }
-        className="font-medium underline underline-offset-2 disabled:opacity-50"
+        // -my-3: il bersaglio tocca i 44px senza allargare il banner (che ha py-3)
+        className="-my-3 inline-flex min-h-touch min-w-touch items-center justify-center font-medium underline underline-offset-2 disabled:opacity-50"
       >
         {t('auth.verify.resend')}
       </button>

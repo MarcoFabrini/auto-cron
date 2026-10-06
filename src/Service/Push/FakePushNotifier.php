@@ -22,8 +22,17 @@ use Symfony\Component\DependencyInjection\Attribute\When;
 #[When('test')]
 final class FakePushNotifier implements PushNotifierInterface
 {
+    /** @var list<array{userId: int|null, payload: PushPayload}> ricordati per i test, che li leggono con sent() */
+    private array $sent = [];
+
     public function __construct(private readonly LoggerInterface $logger)
     {
+    }
+
+    /** @return list<array{userId: int|null, payload: PushPayload}> */
+    public function sent(): array
+    {
+        return $this->sent;
     }
 
     public function supportedPlatforms(): array
@@ -33,6 +42,7 @@ final class FakePushNotifier implements PushNotifierInterface
 
     public function send(PushSubscription $subscription, PushPayload $payload): PushDeliveryResult
     {
+        $this->sent[] = ['userId' => $subscription->getUser()->getId(), 'payload' => $payload];
         $this->logger->info('[FakePushNotifier] would send push', [
             'user_id' => $subscription->getUser()->getId(),
             'platform' => $subscription->getPlatform()->value,

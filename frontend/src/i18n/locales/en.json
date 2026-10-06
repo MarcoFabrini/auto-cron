@@ -11,7 +11,16 @@
     "expenses": "Expenses",
     "reminders": "Reminders",
     "attachments": "Attachments",
-    "settings": "Settings"
+    "settings": "Settings",
+    "primary": "Main navigation",
+    "primary_mobile": "Main mobile navigation"
+  },
+  "org": {
+    "switch": {
+      "label": "Switch organization",
+      "trigger": "{{name}}, switch organization",
+      "current": "Active organization"
+    }
   },
   "auth": {
     "login": {
@@ -76,6 +85,7 @@
       "success_description": "You're now part of the organization.",
       "joined": "You're now part of \"{{org}}\".",
       "error_title": "Invalid invitation",
+      "retry": "Retry",
       "invalid_title": "Invalid link",
       "invalid_description": "The invitation link is missing or invalid.",
       "continue": "Go to dashboard",
@@ -86,16 +96,19 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
+    "archive": "Archive",
     "edit": "Edit",
     "create": "Create",
     "back": "Back",
     "confirm": "Confirm",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "close": "Close"
   },
   "common": {
     "none": "None",
     "optional": "Optional",
-    "coming_soon": "Coming soon"
+    "coming_soon": "Coming soon",
+    "loading": "Loading"
   },
   "dashboard": {
     "total_cost": "Total spent",
@@ -126,6 +139,13 @@
         "maintenance": "Maintenance",
         "rest": "Other categories"
       },
+      "table": {
+        "month": "Month",
+        "total": "Total",
+        "category": "Category",
+        "amount": "Amount",
+        "no_value": "No data"
+      },
       "unit_km_per_liter": "km/l",
       "empty": {
         "spending": "No spending in this period.",
@@ -139,6 +159,7 @@
   "quick_add": {
     "open": "Add",
     "choose_vehicle": "Choose a vehicle",
+    "description": "Choose a vehicle, then what to add.",
     "new_vehicle": "New vehicle"
   },
   "maintenance": {
@@ -256,13 +277,21 @@
       "invite_revoked": "Invitation revoked.",
       "remove": "Remove",
       "remove_title": "Remove member?",
-      "remove_description": "{{email}} will lose access to this organization.",
+      "remove_description": "{{email}} will lose access to this organization. The vehicles they own will be handed over to you: transfer them first if they should go to someone else.",
       "invite_title": "Invite a member",
       "email": "Email",
       "role": "Role",
       "invite_submit": "Send invitation",
       "invited": "Invitation sent.",
-      "removed": "Member removed."
+      "removed": "Member removed.",
+      "change_role": "Change {{name}}'s role",
+      "role_confirm_title": "Change the role?",
+      "role_to_owner": "{{name}} will become an owner of the organization, with the same full control as you: they will also be able to demote other owners and admins.",
+      "role_owner_demoted": "{{name}} will no longer be an owner and will become {{role}}: they will lose control of the organization. The pending invitations they sent will be deleted.",
+      "role_self_demoted": "You will no longer be an owner: you will become {{role}} and lose control of the organization. Getting the role back will need another owner. Your pending invitations will be deleted.",
+      "role_admin_to_member": "{{name}} will no longer be an admin and will only see the vehicles they own or that are shared with them. The pending invitations they sent will be deleted; the vehicles they own stay theirs.",
+      "role_member_to_admin": "{{name}} will become an admin: they will be able to view, edit, archive and delete every vehicle of the organization, manage members and invite more people.",
+      "role_updated": "Role updated."
     }
   },
   "reminder": {
@@ -330,6 +359,11 @@
     "amount": "Amount",
     "recurring": "Recurring expense",
     "recurring_period": "Frequency",
+    "recurring_first_charge_hint": "The date above is the date of the first charge.",
+    "recurring_until": "Until (optional)",
+    "recurring_until_hint": "Leave empty if the expense keeps repeating until you cancel it.",
+    "recurring_until_on": "until {{date}}",
+    "recurring_counted_note": "This expense is counted at every charge already due, not just once. Editing it changes all of its charges.",
     "notes": "Notes",
     "select_vehicle": "Select vehicle",
     "created": "Expense logged",
@@ -491,6 +525,21 @@
       "submit_many_one": "Share with {{count}} person",
       "submit_many_other": "Share with {{count}} people"
     },
+    "transfer": {
+      "button": "Transfer ownership",
+      "section_description": "Hand the vehicle over to another organization member: from then on its totals, charts and reminders are theirs.",
+      "title": "Transfer ownership?",
+      "description": "Choose the member who will become the new owner of the vehicle.",
+      "recipient": "New owner",
+      "recipient_placeholder": "Choose a member",
+      "recipient_required": "Choose the new owner",
+      "no_candidates": "No other organization member to hand the vehicle over to: people join the organization by invitation (Settings → Members).",
+      "keep_access": "Keep read-only access",
+      "keep_access_hint": "If you clear it, you will no longer see this vehicle after the transfer (unless you are an owner or admin of the organization).",
+      "warning": "Totals and charts follow the CURRENT owner, so the vehicle's whole history moves to the new owner and stops counting for you. The new owner will be notified, and at the next send also about reminders that are already due.",
+      "submit": "Transfer",
+      "success": "Ownership transferred"
+    },
     "stats": {
       "title": "Statistics",
       "km_driven": "Distance driven",
@@ -504,6 +553,12 @@
     },
     "archived_no_new_records": "This vehicle is archived: new records can't be added. Restore it to continue.",
     "archived_banner": "This vehicle is archived.",
+    "archive": {
+      "title": "Archive this vehicle?",
+      "description": "The vehicle disappears from lists, the dashboard and notifications, but its data is kept and you can restore it at any time.",
+      "done": "Vehicle archived"
+    },
+    "archived_section": "Archived vehicles",
     "restore": "Restore",
     "restored": "Vehicle restored",
     "shared_read_only": "Shared · read-only",
@@ -562,7 +617,9 @@
       "not_configured": "Push notifications not configured: generate the VAPID keys first and enable them",
       "no_subscription": "No subscribed device: enable notifications on this browser first",
       "no_keys": "Generate a VAPID keypair before enabling notifications",
-      "endpoint_not_allowed": "Unsupported push service"
+      "endpoint_not_allowed": "Unsupported push service",
+      "not_found": "Device not found",
+      "web_fields_required": "Incomplete subscription data: enable notifications again on this browser"
     },
     "settings": {
       "instance_admin_required": "Only the instance administrator (the first registered user) can change these settings"
@@ -575,7 +632,16 @@
       "invalid_current_password": "Your current password is incorrect",
       "invalid_reset_token": "The reset link is expired or invalid",
       "registration_closed": "Open registration is closed on this instance: ask the administrator for an invite",
-      "try_again": "The server is busy, try again in a moment."
+      "try_again": "The server is busy, try again in a moment.",
+      "invalid_refresh_token": "Session expired, please sign in again",
+      "invalid_verification_token": "The verification link is expired or invalid",
+      "no_avatar": "There is no profile photo to remove",
+      "not_authenticated": "Sign in to continue",
+      "not_member": "You are not a member of this organization",
+      "refresh_token_required": "Session expired, please sign in again",
+      "no_active_organization": "No active organization: sign in again or pick one",
+      "organization_not_found": "Organization not found",
+      "not_member_of_organization": "You are no longer a member of this organization: sign in again"
     },
     "access": {
       "org_admin_required": "Only organization admins can perform this action."
@@ -606,9 +672,14 @@
       "recurring_period": {
         "required": "Select frequency"
       },
+      "recurring_until": {
+        "before_start": "The end date cannot be before the expense date"
+      },
       "not_found": "Expense not found",
       "recurring_period_required": "Choose how often the recurring expense repeats",
-      "recurring_period_unexpected": "Frequency only applies to recurring expenses"
+      "recurring_period_unexpected": "Frequency only applies to recurring expenses",
+      "recurring_until_before_start": "The end date cannot be before the first charge",
+      "recurring_until_unexpected": "The end date only applies to recurring expenses"
     },
     "maintenance": {
       "vehicle": {
@@ -652,21 +723,26 @@
         "required": "Enter initial km"
       },
       "duplicate_fuel_type": "Secondary fuel must differ from primary",
-      "not_found": "Vehicle not found"
+      "fuel_type_in_use": "There are refuelings with this fuel: edit or delete them first",
+      "not_found": "Vehicle not found",
+      "limit_reached": "This organization has reached its maximum number of vehicles"
     },
     "upload": {
       "file_required": "Select a file",
       "invalid_file": "Invalid file",
       "file_too_large": "File too large (max 10 MB)",
       "mime_not_allowed": "Unsupported format (only JPG, PNG, WebP, PDF)",
-      "entity_required": "Missing reference"
+      "entity_required": "Missing reference",
+      "too_many_files": "Too many attachments on this item (maximum 20)",
+      "quota_exceeded": "The organization's attachment storage is full: delete some files to upload more"
     },
     "attachment": {
       "not_found": "Attachment not found",
       "file_missing": "File unavailable"
     },
     "query": {
-      "entity_required": "Missing parameters"
+      "entity_required": "Missing parameters",
+      "vehicle_id_required": "Choose a vehicle first"
     },
     "entity": {
       "not_found": "Resource not found"
@@ -675,7 +751,10 @@
       "401": "Unauthorized",
       "403": "Access denied",
       "404": "Not found",
-      "500": "Server error"
+      "500": "Server error",
+      "400": "Invalid request",
+      "405": "Operation not allowed",
+      "429": "Too many requests: try again in a moment"
     },
     "validation_failed": "Check the data you entered: the server didn't accept it.",
     "unknown": "Unexpected error",
@@ -697,6 +776,7 @@
         "required": "Confirm your password"
       },
       "password": {
+        "required": "Enter your password",
         "min": "At least 8 characters",
         "mismatch": "Passwords do not match"
       },
@@ -708,6 +788,11 @@
       "not_org_member": "Invalid selection: you can only share with organization members.",
       "cannot_remove_owner": "The vehicle owner can't be removed.",
       "not_found": "Share not found."
+    },
+    "transfer": {
+      "recipient_invalid": "Select a valid member of the organization.",
+      "same_owner": "This member already owns the vehicle.",
+      "ownership_changed": "The vehicle ownership changed in the meantime: reload the page and try again."
     },
     "reminder": {
       "description": {
@@ -729,7 +814,15 @@
       "unavailable": "Server unreachable"
     },
     "member": {
-      "owner_role_forbidden": "Only an owner can assign the owner role"
+      "owner_role_forbidden": "Only an owner can assign the owner role",
+      "already_exists": "This person is already a member of the organization",
+      "cannot_remove_owner": "The organization's owner cannot be removed: demote them first",
+      "cannot_change_owner_role": "An admin cannot change an owner's role",
+      "cannot_change_admin_role": "Only an owner can change an admin's role",
+      "cannot_change_own_role": "You cannot change your own role",
+      "last_owner": "The organization must keep at least one owner: promote another member first",
+      "not_found": "Member not found",
+      "invite_rate_limited": "Too many invitations sent: try again later"
     },
     "validation": {
       "decimal_format": "Invalid number (e.g. 12.50)",
@@ -738,7 +831,15 @@
       "price_format": "Invalid price (max 2 integer digits and 4 decimals)"
     },
     "org": {
-      "slug_format": "This name can't be used for the organization address"
+      "slug_format": "This name can't be used for the organization address",
+      "not_found": "Organization not found",
+      "slug_taken": "This address is already used by another organization",
+      "create_forbidden": "Only the instance administrator (the first registered user) can create new organizations"
+    },
+    "invitation": {
+      "invalid": "The invitation is expired or invalid",
+      "not_for_you": "This invitation is for a different email address",
+      "not_found": "Invitation not found"
     }
   },
   "account": {
@@ -780,5 +881,16 @@
       "description": "Can't reach the server. Your session is still valid: check your connection and try again.",
       "retry": "Retry"
     }
+  },
+  "pull_to_refresh": {
+    "pull": "Pull to refresh",
+    "release": "Release to refresh",
+    "refreshing": "Refreshing"
+  },
+  "update_prompt": {
+    "title": "New version available",
+    "description": "Refresh to use the latest version of the app.",
+    "action": "Refresh",
+    "action_alt": "Refresh the app to the new version"
   }
 }

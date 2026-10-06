@@ -92,10 +92,26 @@ final class SendReminderNotificationHandler
             throw $e;
         }
 
+        // Veicolo senza nessun destinatario idoneo (proprietario anonimizzato, membership non accettata,
+        // niente share admin): non si è notificato nessuno, quindi il livello NON deve restare
+        // "notificato". Si rilascia il claim senza eccezione (un retry di Messenger non cambierebbe
+        // nulla finché manca il proprietario) e si segnala nel log. Il comando giornaliero la
+        // ripropone al giro dopo: costa un messaggio e una query per promemoria, accettabile, e
+        // appena il veicolo ha di nuovo un proprietario la notifica parte da sola.
+        if ($recipients === 0) {
+            $this->release($reminder, $urgency, $previous, $previousNotifiedAt);
+            $this->logger->warning('Reminder without eligible owner: not notified, will be retried by the next dispatch', [
+                'reminder_id' => $reminder->getId(),
+                'vehicle_id' => $vehicle->getId(),
+            ]);
+
+            return;
+        }
+
         // Nulla è partito (né email né push): rilascia il claim e lascia riprovare a Messenger,
         // altrimenti il livello risulterebbe notificato senza che nessuno l'abbia ricevuto.
         // Se almeno un canale ha consegnato non si ritenta, per non duplicare push ed email.
-        if ($recipients > 0 && $delivered === 0) {
+        if ($delivered === 0) {
             $this->release($reminder, $urgency, $previous, $previousNotifiedAt);
 
             throw new \RuntimeException(sprintf('Reminder %d: notification delivery failed for all recipients', (int) $reminder->getId()));

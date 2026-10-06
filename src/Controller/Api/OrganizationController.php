@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace App\Controller\Api;
 
 use App\Dto\Request\MemberInviteRequest;
+use App\Dto\Request\MemberRoleRequest;
 use App\Dto\Request\OrganizationRequest;
 use App\Entity\Organization;
 use App\Entity\OrganizationInvitation;
 use App\Entity\OrganizationMember;
 use App\Entity\User;
-use App\Entity\Vehicle;
-use App\Entity\VehicleShare;
 use App\Enum\OrgRole;
 use App\Repository\OrganizationInvitationRepository;
 use App\Repository\OrganizationMemberRepository;
@@ -21,11 +20,17 @@ use App\Security\Voter\OrganizationVoter;
 use App\Service\AppMailer;
 use App\Service\AttachmentCleaner;
 use App\Service\MailBuilder;
+use App\Service\MemberNotifier;
+use App\Service\MemberRoleChangeException;
+use App\Service\OrganizationMemberRemover;
+use App\Service\OrganizationMemberRoleChanger;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\RateLimiter\RateLimiterFactoryInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Nelmio\ApiDocBundle\Attribute\Model;
 use OpenApi\Attributes as OA;
@@ -54,6 +59,10 @@ final class OrganizationController extends AbstractController
         private readonly MailBuilder $mailBuilder,
         private readonly LoggerInterface $logger,
         private readonly AttachmentCleaner $attachmentCleaner,
+        private readonly OrganizationMemberRemover $memberRemover,
+        private readonly OrganizationMemberRoleChanger $roleChanger,
+        private readonly MemberNotifier $memberNotifier,
+        private readonly RateLimiterFactoryInterface $inviteLimiter, // framework.yaml: rate_limiter.invite
     ) {
     }
 
@@ -89,10 +98,12 @@ final class OrganizationController extends AbstractController
     }
 
     #[OA\Post(
-        summary: 'Create a new organization (user becomes owner)',
+        summary: 'Create a new organization (instance administrator only; the creator becomes owner)',
+        description: 'Instance administrator only (the first registered user): registration already creates the first organization and invited users join an existing one, so any other account creating organizations is just an abuse vector.',
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: OrganizationRequest::class))),
         responses: [
             new OA\Response(response: 201, description: 'Created', content: new OA\JsonContent(ref: new Model(type: Organization::class, groups: ['org:read']))),
+            new OA\Response(response: 403, description: 'org.create_forbidden'),
             new OA\Response(response: 422, description: 'validation_failed'),
         ],
     )]
@@ -101,6 +112,9 @@ final class OrganizationController extends AbstractController
     {
         /** @var User $user */
         $user = $this->getUser();
+        if (!$this->userRepo->isInstanceAdmin($user)) {
+            return $this->problem('org.create_forbidden', 403);
+        }
 
         $org = (new Organization())
             ->setName($payload->name)
@@ -108,7 +122,7 @@ final class OrganizationController extends AbstractController
 
         $errors = $this->validator->validate($org);
         if (count($errors) > 0) {
-            return $this->validationError($errors);
+            return $this->validationProblem($errors);
         }
 
         $membership = (new OrganizationMember())
@@ -119,7 +133,13 @@ final class OrganizationController extends AbstractController
 
         $this->em->persist($org);
         $this->em->persist($membership);
-        $this->em->flush();
+        try {
+            $this->em->flush();
+        } catch (UniqueConstraintViolationException) {
+            // Controllo e INSERT non sono atomici: due richieste con lo stesso indirizzo nello stesso
+            // istante passano entrambe la validazione e la seconda cade sull'indice unico.
+            return $this->fieldProblem('slug', 'org.slug_taken');
+        }
 
         return $this->jsonGroups($org, ['org:read'], 201);
     }
@@ -146,10 +166,15 @@ final class OrganizationController extends AbstractController
 
         $errors = $this->validator->validate($org);
         if (count($errors) > 0) {
-            return $this->validationError($errors);
+            return $this->validationProblem($errors);
         }
 
-        $this->em->flush();
+        try {
+            $this->em->flush();
+        } catch (UniqueConstraintViolationException) {
+            return $this->fieldProblem('slug', 'org.slug_taken'); // stessa corsa della creazione
+        }
+
         return $this->jsonGroups($org, ['org:read']);
     }
 
@@ -217,12 +242,13 @@ final class OrganizationController extends AbstractController
      */
     #[OA\Post(
         summary: 'Invite an email address to the org',
-        description: 'Owner/admin only. Works for non-registered emails (they sign up on accept). Resends if a pending invite exists. 409 only if already a member.',
+        description: 'Owner/admin only. Works for non-registered emails (they sign up on accept). Resends if a pending invite exists. 409 only if already a member. At most 20 invitations per hour per inviting user (429 member.invite_rate_limited). A failure sending the email is logged but does not fail the request: the invitation is created and can be re-sent.',
         parameters: [new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer'))],
         requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: MemberInviteRequest::class))),
         responses: [
             new OA\Response(response: 201, description: 'Invitation sent', content: new OA\JsonContent(ref: new Model(type: OrganizationInvitation::class, groups: ['invitation:read']))),
             new OA\Response(response: 409, description: 'member.already_exists'),
+            new OA\Response(response: 429, description: 'member.invite_rate_limited'),
         ],
     )]
     #[Route('/{id}/members', name: 'members_invite', methods: ['POST'], requirements: ['id' => '\d+'])]
@@ -231,6 +257,13 @@ final class OrganizationController extends AbstractController
         $org = $this->mustFind($id);
         $this->denyAccessUnlessGranted(OrganizationVoter::MANAGE_MEMBERS, $org);
 
+        /** @var User $inviter */
+        $inviter = $this->getUser();
+        // Prima di ogni altro controllo: anche i 409 "già membro" costano una richiesta a chi abusa.
+        if (!$this->inviteLimiter->create((string) $inviter->getId())->consume()->isAccepted()) {
+            return $this->problem('member.invite_rate_limited', 429);
+        }
+
         $email = mb_strtolower(trim($payload->email));
 
         // Se l'email è già di un utente che è già membro → 409.
@@ -238,9 +271,6 @@ final class OrganizationController extends AbstractController
         if ($existingUser !== null && $this->memberRepo->findMembership($existingUser, $org) !== null) {
             return $this->problem('member.already_exists', 409);
         }
-
-        /** @var User $inviter */
-        $inviter = $this->getUser();
 
         // Solo un OWNER può creare altri OWNER: un ADMIN non può auto-promuoversi via invito.
         if ($payload->role === OrgRole::OWNER
@@ -306,9 +336,52 @@ final class OrganizationController extends AbstractController
         return new JsonResponse(null, 204);
     }
 
+    #[OA\Patch(
+        summary: 'Change the organization role of a member',
+        description: 'Strict hierarchy. Owner: any role to anyone (co-owners are explicit; an owner can step down while another owner remains). Admin: can only promote a `member` to `admin`; never demotes, never touches another admin or an owner, never assigns `owner`, cannot change their own role. Same role = 200, no audit row, no notification. The organization always keeps at least one accepted owner (409 member.last_owner). Demoting a member deletes the pending invitations they sent in this organization. Takes effect on the member\'s next request (the role is not in the JWT). The affected member is notified by email and push (best-effort, failures are logged only).',
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+            new OA\Parameter(name: 'memberId', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        requestBody: new OA\RequestBody(required: true, content: new OA\JsonContent(ref: new Model(type: MemberRoleRequest::class))),
+        responses: [
+            new OA\Response(response: 200, description: 'Updated membership', content: new OA\JsonContent(ref: new Model(type: OrganizationMember::class, groups: ['membership:read', 'user:list']))),
+            new OA\Response(response: 403, description: 'member.cannot_change_owner_role | member.cannot_change_admin_role | member.cannot_change_own_role | member.owner_role_forbidden | no MANAGE_MEMBERS permission'),
+            new OA\Response(response: 404, description: 'org.not_found | member.not_found'),
+            new OA\Response(response: 409, description: 'member.last_owner'),
+            new OA\Response(response: 422, description: 'validation_failed'),
+        ],
+    )]
+    #[Route('/{id}/members/{memberId}', name: 'members_update_role', methods: ['PATCH'], requirements: ['id' => '\d+', 'memberId' => '\d+'])]
+    public function updateMemberRole(int $id, int $memberId, #[MapRequestPayload] MemberRoleRequest $payload): JsonResponse
+    {
+        $org = $this->mustFind($id);
+        $this->denyAccessUnlessGranted(OrganizationVoter::MANAGE_MEMBERS, $org);
+
+        $member = $this->memberRepo->find($memberId);
+        if (!$member || $member->getOrganization()->getId() !== $org->getId() || !$member->isAccepted()) {
+            return $this->problem('member.not_found', 404);
+        }
+
+        /** @var User $actor */
+        $actor = $this->getUser();
+        try {
+            $changed = $this->roleChanger->change($member, $payload->role, $actor);
+        } catch (MemberRoleChangeException $e) {
+            return $this->problem($e->key, $e->status);
+        }
+
+        // Dopo il commit e solo se è cambiato qualcosa: l'avviso non deve mai far fallire il cambio.
+        if ($changed) {
+            $this->memberNotifier->roleChanged($member, $actor);
+        }
+
+        return $this->jsonGroups($member, ['membership:read', 'user:list']);
+    }
+
     #[OA\Delete(
         summary: 'Remove member from organization',
-        description: 'Owner cannot be removed (transfer ownership first).',
+        description: 'An owner cannot be removed: demote them first (PATCH the member role). The vehicles the member owns are transferred to the user performing the removal; the member\'s other vehicle shares in the organization are dropped.',
         parameters: [
             new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
             new OA\Parameter(name: 'memberId', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
@@ -334,14 +407,11 @@ final class OrganizationController extends AbstractController
             return $this->problem('member.cannot_remove_owner', 409);
         }
 
-        // Le condivisioni dei veicoli dell'org cadono con la membership: se l'utente venisse
-        // reinvitato in futuro riotterrebbe subito i vecchi accessi (e un proprietario "fantasma").
-        $this->em->wrapInTransaction(function () use ($member, $org): void {
-            $this->em->createQuery(
-                'DELETE FROM '.VehicleShare::class.' s WHERE s.user = :user AND s.vehicle IN (SELECT v.id FROM '.Vehicle::class.' v WHERE v.organization = :org)',
-            )->setParameter('user', $member->getUser())->setParameter('org', $org)->execute();
-            $this->em->remove($member);
-        });
+        // I veicoli del membro passano a chi lo rimuove (altrimenti resterebbero senza proprietario
+        // e nessuno riceverebbe più le notifiche); le sue altre share dell'org cadono con la membership.
+        /** @var User $actor */
+        $actor = $this->getUser();
+        $this->memberRemover->remove($member, $actor);
 
         return new JsonResponse(null, 204);
     }
@@ -375,17 +445,5 @@ final class OrganizationController extends AbstractController
     private function jsonGroups(mixed $data, array $groups, int $status = 200): JsonResponse
     {
         return new JsonResponse($this->serializer->serialize($data, 'json', ['groups' => $groups]), $status, [], json: true);
-    }
-
-    private function validationError(\Symfony\Component\Validator\ConstraintViolationListInterface $errors): JsonResponse
-    {
-        $details = [];
-        foreach ($errors as $error) {
-            $details[] = ['field' => $error->getPropertyPath(), 'message' => $error->getMessage()];
-        }
-        return new JsonResponse(
-            ['type' => 'about:blank', 'title' => 'validation_failed', 'status' => 422, 'errors' => $details],
-            422,
-        );
     }
 }

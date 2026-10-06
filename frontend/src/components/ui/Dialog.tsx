@@ -1,6 +1,7 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef, type HTMLAttributes } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 /**
@@ -52,45 +53,49 @@ export const DialogContent = forwardRef<
     /** Su mobile (<sm) occupa tutto lo schermo come una pagina; da sm+ resta card centrata. */
     mobileFullScreen?: boolean;
   }
->(({ className, children, hideClose, mobileFullScreen, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        'fixed z-50 grid gap-4 overflow-y-auto overscroll-contain bg-background shadow-lg',
-        'data-[state=open]:animate-in data-[state=open]:fade-in-0',
-        'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
-        mobileFullScreen
-          ? [
-              // mobile: schermo intero, contenuto (titolo + form) centrato in verticale
-              'inset-0 w-full max-w-none content-center border-0 p-4',
-              // tablet/desktop (sm+): card centrata, contenuto in alto
-              'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-lg sm:max-h-[90vh] sm:content-stretch',
-              'sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border sm:p-6',
-              'sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95',
-            ]
-          : [
-              'left-1/2 top-1/2 w-full max-w-lg max-h-[90vh] -translate-x-1/2 -translate-y-1/2',
-              'border p-6 sm:rounded-lg',
-              'data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
-            ],
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      {!hideClose && (
-        <DialogPrimitive.Close
-          className="absolute right-4 top-4 rounded-md p-1 opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none"
-          aria-label="Close"
-        >
-          <X className="size-4" />
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(({ className, children, hideClose, mobileFullScreen, ...props }, ref) => {
+  const { t } = useTranslation();
+  return (
+    <DialogPortal>
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          'fixed z-50 grid gap-4 overflow-y-auto overscroll-contain bg-background shadow-lg',
+          'data-[state=open]:animate-in data-[state=open]:fade-in-0',
+          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
+          mobileFullScreen
+            ? [
+                // mobile: schermo intero, contenuto (titolo + form) centrato in verticale
+                'inset-0 w-full max-w-none content-center border-0 p-4',
+                // tablet/desktop (sm+): card centrata, contenuto in alto
+                'sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-lg sm:max-h-[90vh] sm:content-stretch',
+                'sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border sm:p-6',
+                'sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:zoom-out-95',
+              ]
+            : [
+                'left-1/2 top-1/2 w-full max-w-lg max-h-[90vh] -translate-x-1/2 -translate-y-1/2',
+                'border p-6 sm:rounded-lg',
+                'data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
+              ],
+          className,
+        )}
+        {...props}
+      >
+        {children}
+        {!hideClose && (
+          <DialogPrimitive.Close
+            // bersaglio da 44px, centrato dove stava l'icona (28px dall'angolo)
+            className="absolute right-1.5 top-1.5 flex min-h-touch min-w-touch items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none"
+            aria-label={t('actions.close')}
+          >
+            <X className="size-4" />
+          </DialogPrimitive.Close>
+        )}
+      </DialogPrimitive.Content>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

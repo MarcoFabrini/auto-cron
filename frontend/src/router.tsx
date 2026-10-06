@@ -1,47 +1,51 @@
-import type { ReactNode } from 'react';
-import { createBrowserRouter, Navigate, Outlet, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Suspense, type ReactNode } from 'react';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  useLocation,
+  useParams,
+  useSearchParams,
+  type RouteObject,
+} from 'react-router-dom';
 import { safeNextPath } from '@/lib/safeNext';
 import { LoginPage } from './pages/auth/LoginPage';
-import { RegisterPage } from './pages/auth/RegisterPage';
-import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
-import { VerifyEmailPage } from './pages/auth/VerifyEmailPage';
-import { AcceptInvitePage } from './pages/auth/AcceptInvitePage';
 import { DashboardPage } from './pages/DashboardPage';
-import { SettingsPage } from './pages/SettingsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { AppLayout, RequireRegistrationOpen } from './components/layout';
+import { AppLayout, RequireRegistrationOpen, RouteFallback } from './components/layout';
 import { useAuthStore } from './stores/useAuthStore';
-import {
-  VehicleDetailPage,
-  VehicleEditPage,
-  VehicleListPage,
-  VehicleNewPage,
-} from './pages/vehicles';
-import {
-  MaintenanceDetailPage,
-  MaintenanceEditPage,
-  MaintenanceListPage,
-  MaintenanceNewPage,
-} from './pages/maintenance';
-import {
-  RefuelingDetailPage,
-  RefuelingEditPage,
-  RefuelingListPage,
-  RefuelingNewPage,
-} from './pages/refueling';
-import {
-  ExpenseDetailPage,
-  ExpenseEditPage,
-  ExpenseListPage,
-  ExpenseNewPage,
-} from './pages/expenses';
-import {
-  ReminderDetailPage,
-  ReminderEditPage,
-  ReminderListPage,
-  ReminderNewPage,
-} from './pages/reminders';
+import { lazyNamed } from './lib/lazyNamed';
+
+// Login, shell, guard, dashboard e 404 sono nel bundle iniziale; il resto si scarica alla prima
+// visita (un chunk per gruppo: i barrel di pagine finiscono insieme). Il cambio rotta aspetta il
+// chunk senza svuotare la pagina corrente (transition di React Router); al primo ingresso e nelle
+// rotte pubbliche compare il fallback di Suspense.
+const RegisterPage = lazyNamed(() => import('./pages/auth/RegisterPage'), 'RegisterPage');
+const ForgotPasswordPage = lazyNamed(() => import('./pages/auth/ForgotPasswordPage'), 'ForgotPasswordPage');
+const ResetPasswordPage = lazyNamed(() => import('./pages/auth/ResetPasswordPage'), 'ResetPasswordPage');
+const VerifyEmailPage = lazyNamed(() => import('./pages/auth/VerifyEmailPage'), 'VerifyEmailPage');
+const AcceptInvitePage = lazyNamed(() => import('./pages/auth/AcceptInvitePage'), 'AcceptInvitePage');
+const SettingsPage = lazyNamed(() => import('./pages/SettingsPage'), 'SettingsPage');
+const VehicleListPage = lazyNamed(() => import('./pages/vehicles'), 'VehicleListPage');
+const VehicleNewPage = lazyNamed(() => import('./pages/vehicles'), 'VehicleNewPage');
+const VehicleDetailPage = lazyNamed(() => import('./pages/vehicles'), 'VehicleDetailPage');
+const VehicleEditPage = lazyNamed(() => import('./pages/vehicles'), 'VehicleEditPage');
+const MaintenanceListPage = lazyNamed(() => import('./pages/maintenance'), 'MaintenanceListPage');
+const MaintenanceNewPage = lazyNamed(() => import('./pages/maintenance'), 'MaintenanceNewPage');
+const MaintenanceDetailPage = lazyNamed(() => import('./pages/maintenance'), 'MaintenanceDetailPage');
+const MaintenanceEditPage = lazyNamed(() => import('./pages/maintenance'), 'MaintenanceEditPage');
+const RefuelingListPage = lazyNamed(() => import('./pages/refueling'), 'RefuelingListPage');
+const RefuelingNewPage = lazyNamed(() => import('./pages/refueling'), 'RefuelingNewPage');
+const RefuelingDetailPage = lazyNamed(() => import('./pages/refueling'), 'RefuelingDetailPage');
+const RefuelingEditPage = lazyNamed(() => import('./pages/refueling'), 'RefuelingEditPage');
+const ExpenseListPage = lazyNamed(() => import('./pages/expenses'), 'ExpenseListPage');
+const ExpenseNewPage = lazyNamed(() => import('./pages/expenses'), 'ExpenseNewPage');
+const ExpenseDetailPage = lazyNamed(() => import('./pages/expenses'), 'ExpenseDetailPage');
+const ExpenseEditPage = lazyNamed(() => import('./pages/expenses'), 'ExpenseEditPage');
+const ReminderListPage = lazyNamed(() => import('./pages/reminders'), 'ReminderListPage');
+const ReminderNewPage = lazyNamed(() => import('./pages/reminders'), 'ReminderNewPage');
+const ReminderDetailPage = lazyNamed(() => import('./pages/reminders'), 'ReminderDetailPage');
+const ReminderEditPage = lazyNamed(() => import('./pages/reminders'), 'ReminderEditPage');
 
 /** Route guard: richiede sessione autenticata, altrimenti redirect login. */
 function RequireAuth() {
@@ -68,44 +72,59 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-export const router = createBrowserRouter([
+/** Rotte pubbliche fuori dalla shell: il fallback occupa la pagina intera. */
+function PublicRoutes() {
+  return (
+    <Suspense fallback={<RouteFallback fullScreen />}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
+/** Definizione delle rotte, esportata per poterla montare nei test con `createMemoryRouter`. */
+export const routes: RouteObject[] = [
   {
-    path: '/login',
-    element: (
-      <RedirectIfAuthed>
-        <LoginPage />
-      </RedirectIfAuthed>
-    ),
+    element: <PublicRoutes />,
+    children: [
+      {
+        path: '/login',
+        element: (
+          <RedirectIfAuthed>
+            <LoginPage />
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: '/register',
+        element: (
+          <RedirectIfAuthed>
+            <RequireRegistrationOpen>
+              <RegisterPage />
+            </RequireRegistrationOpen>
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: '/forgot-password',
+        element: (
+          <RedirectIfAuthed>
+            <ForgotPasswordPage />
+          </RedirectIfAuthed>
+        ),
+      },
+      {
+        path: '/reset-password',
+        element: (
+          <RedirectIfAuthed>
+            <ResetPasswordPage />
+          </RedirectIfAuthed>
+        ),
+      },
+      // Pubbliche e accessibili anche da loggati: il token arriva dall'email.
+      { path: '/verify-email', element: <VerifyEmailPage /> },
+      { path: '/accept-invite', element: <AcceptInvitePage /> },
+    ],
   },
-  {
-    path: '/register',
-    element: (
-      <RedirectIfAuthed>
-        <RequireRegistrationOpen>
-          <RegisterPage />
-        </RequireRegistrationOpen>
-      </RedirectIfAuthed>
-    ),
-  },
-  {
-    path: '/forgot-password',
-    element: (
-      <RedirectIfAuthed>
-        <ForgotPasswordPage />
-      </RedirectIfAuthed>
-    ),
-  },
-  {
-    path: '/reset-password',
-    element: (
-      <RedirectIfAuthed>
-        <ResetPasswordPage />
-      </RedirectIfAuthed>
-    ),
-  },
-  // Pubbliche e accessibili anche da loggati: il token arriva dall'email.
-  { path: '/verify-email', element: <VerifyEmailPage /> },
-  { path: '/accept-invite', element: <AcceptInvitePage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -139,4 +158,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);

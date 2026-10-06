@@ -2,7 +2,8 @@ framework:
     router:
         # Configure how to generate URLs in non-HTTP contexts, such as CLI commands.
         # See https://symfony.com/doc/current/routing.html#generating-urls-in-commands
-        default_uri: '%env(DEFAULT_URI)%'
+        # Senza DEFAULT_URI (dev, test, docker run) vale il fallback; in produzione lo imposta compose da DOMAIN.
+        default_uri: '%env(default:app_default_uri_default:DEFAULT_URI)%'
 
 when@prod:
     framework:

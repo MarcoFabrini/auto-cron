@@ -16,6 +16,7 @@ use App\Repository\VehicleRepository;
 use App\Security\Voter\AttachmentVoter;
 use App\Security\Voter\VehicleVoter;
 use App\Service\ActiveOrganizationResolver;
+use App\Service\AttachmentQuota;
 use App\Service\Storage\AttachmentStorageInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -42,6 +43,7 @@ final class AttachmentController extends AbstractController
     use ProblemDetailsResponseTrait;
 
     private const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+    private const MAX_FILENAME_LENGTH = 255; // = attachments.original_filename
     private const ALLOWED_MIME = [
         'image/jpeg',
         'image/png',
@@ -59,6 +61,7 @@ final class AttachmentController extends AbstractController
         private readonly ReminderRepository $reminderRepo,
         private readonly ActiveOrganizationResolver $orgResolver,
         private readonly AttachmentStorageInterface $storage,
+        private readonly AttachmentQuota $quota,
         private readonly SerializerInterface $serializer,
     ) {
     }
@@ -103,7 +106,7 @@ final class AttachmentController extends AbstractController
      */
     #[OA\Post(
         summary: 'Upload attachment (multipart/form-data)',
-        description: 'Max 10MB. Whitelist: image/jpeg, image/png, image/webp, application/pdf. MIME verified server-side.',
+        description: 'Max 10MB. Whitelist: image/jpeg, image/png, image/webp, application/pdf. MIME verified server-side. At most 20 files per record and a per-organization size cap (ATTACHMENTS_ORG_QUOTA_MB, default 1024 MB). A client file name longer than 255 characters is truncated keeping its extension.',
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\MediaType(
@@ -121,8 +124,9 @@ final class AttachmentController extends AbstractController
         responses: [
             new OA\Response(response: 201, description: 'Uploaded', content: new OA\JsonContent(ref: new Model(type: Attachment::class, groups: ['attachment:read']))),
             new OA\Response(response: 400, description: 'upload.file_required / upload.invalid_file / upload.entity_required'),
-            new OA\Response(response: 413, description: 'upload.file_too_large'),
+            new OA\Response(response: 413, description: 'upload.file_too_large / upload.quota_exceeded'),
             new OA\Response(response: 415, description: 'upload.mime_not_allowed'),
+            new OA\Response(response: 422, description: 'upload.too_many_files'),
         ],
     )]
     #[Route('', name: 'upload', methods: ['POST'])]
@@ -159,8 +163,17 @@ final class AttachmentController extends AbstractController
         }
         $this->denyAccessUnlessGranted(VehicleVoter::EDIT, $vehicle);
 
-        $originalFilename = $file->getClientOriginalName();
         $size = $file->getSize();
+        $quotaError = $this->quota->violation($org, $type, $entityId, $size);
+        if ($quotaError === AttachmentQuota::TOO_MANY_FILES) {
+            return $this->problem($quotaError, 422);
+        }
+        if ($quotaError !== null) {
+            return $this->problem($quotaError, 413);
+        }
+
+        // La colonna è di 255 caratteri: un nome più lungo farebbe fallire l'INSERT DOPO aver salvato il file.
+        $originalFilename = self::fitFilename($file->getClientOriginalName());
 
         // Lo store fisico avviene PRIMA del persist DB: se DB fallisce, cleanup manuale
         $storedPath = $this->storage->store($file, $type->value);
@@ -261,6 +274,24 @@ final class AttachmentController extends AbstractController
             AttachmentEntityType::REFUELING => $this->refuelingRepo->findOneInOrganization($id, $org)?->getVehicle(),
             AttachmentEntityType::REMINDER => $this->reminderRepo->findOneInOrganization($id, $org)?->getVehicle(),
         };
+    }
+
+    /** Accorcia il nome alla lunghezza della colonna `original_filename` mantenendo l'estensione. */
+    private static function fitFilename(string $name): string
+    {
+        if (mb_strlen($name) <= self::MAX_FILENAME_LENGTH) {
+            return $name;
+        }
+
+        $extension = pathinfo($name, PATHINFO_EXTENSION);
+        // Un'"estensione" lunga quanto il nome stesso non è un'estensione: si taglia e basta.
+        if ($extension === '' || mb_strlen($extension) > 10) {
+            return mb_substr($name, 0, self::MAX_FILENAME_LENGTH);
+        }
+
+        $base = mb_substr($name, 0, self::MAX_FILENAME_LENGTH - mb_strlen($extension) - 1, 'UTF-8');
+
+        return $base.'.'.$extension;
     }
 
     private function safeFilename(string $name): string

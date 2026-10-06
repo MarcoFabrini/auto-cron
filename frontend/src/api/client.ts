@@ -28,24 +28,41 @@ export type RefreshResult = 'ok' | 'invalid' | 'unavailable';
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 
+/**
+ * Pausa prima del secondo tentativo dopo un 400/401. Il refresh token ruota a ogni uso e il backend
+ * non ha finestra di tolleranza: con due schede che rinnovano insieme la perdente riceve un rifiuto
+ * anche se il cookie è stato ruotato correttamente dall'altra. Dopo una breve attesa il browser
+ * manda il cookie nuovo.
+ */
+export const REFRESH_RETRY_DELAY_MS = 250;
+
+async function attemptRefresh(): Promise<RefreshResult> {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-Client-Type': 'web', Accept: 'application/json' },
+    });
+    if (res.status === 400 || res.status === 401) return 'invalid';
+    if (!res.ok) return 'unavailable';
+    const data = (await res.json()) as { access_token: string };
+    useAuthStore.getState().setAccessToken(data.access_token);
+    return 'ok';
+  } catch {
+    return 'unavailable';
+  }
+}
+
 export async function refreshAccessToken(): Promise<RefreshResult> {
-  // Coalesce simultaneous refresh attempts
+  // Coalesce simultaneous refresh attempts (nella stessa scheda; tra schede vedi REFRESH_RETRY_DELAY_MS)
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-Client-Type': 'web' },
-      });
-      if (res.status === 400 || res.status === 401) return 'invalid';
-      if (!res.ok) return 'unavailable';
-      const data = (await res.json()) as { access_token: string };
-      useAuthStore.getState().setAccessToken(data.access_token);
-      return 'ok';
-    } catch {
-      return 'unavailable';
+      const first = await attemptRefresh();
+      if (first !== 'invalid') return first;
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAY_MS));
+      return await attemptRefresh();
     } finally {
       refreshPromise = null;
     }
@@ -58,6 +75,9 @@ function withAuth(opts: AuthFetchOptions): RequestInit {
   const access = useAuthStore.getState().accessToken;
   const headers = new Headers(opts.headers);
   headers.set('X-Client-Type', 'web');
+  // JSON salvo richiesta diversa (i download di allegati passano `*/*`). Il backend risponde
+  // comunque in JSON agli errori sotto /api: l'header dichiara solo cosa si aspetta il client.
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   if (access) headers.set('Authorization', `Bearer ${access}`);
   return {
     ...opts,
@@ -127,6 +147,9 @@ export async function authFetch<T = unknown>(
  * `<img src>` non può inviare l'header Bearer. Stessa auth/retry di authFetch.
  */
 export async function authFetchBlob(path: string, opts: AuthFetchOptions = {}): Promise<Blob> {
-  const res = await authFetchResponse(path, opts);
+  const res = await authFetchResponse(path, {
+    ...opts,
+    headers: { Accept: '*/*', ...Object.fromEntries(new Headers(opts.headers)) },
+  });
   return res.blob();
 }
