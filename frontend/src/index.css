@@ -80,7 +80,7 @@
        altrimenti l'intero documento scrolla come pagina normale (sidebar
        compresa) rivelando il body bianco sotto — solo <main>/<aside>/dialog
        (overflow-y-auto espliciti) devono poter scrollare, mai html/body. */
-    height: 100dvh;
+    height: 100%;
     overflow: hidden;
   }
   body {
@@ -89,7 +89,7 @@
        incatena a body/html e su trackpad/mouse Mac genera un flash del
        rubber-band elastico (schermo bianco momentaneo "sotto" il contenuto). */
     overscroll-behavior: none;
-    height: 100dvh;
+    height: 100%;
     overflow: hidden;
     /* Prevent text size adjustment on orientation change (iOS) */
     -webkit-text-size-adjust: 100%;
