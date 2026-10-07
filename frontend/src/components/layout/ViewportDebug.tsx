@@ -11,7 +11,7 @@ function px(value: number | undefined): string {
 
 function measure(probe: HTMLElement | null): Reading {
   const vv = window.visualViewport;
-  const nav = document.querySelector<HTMLElement>('nav.bottom-0');
+  const nav = document.querySelector<HTMLElement>('nav[aria-label]:not([class*="hidden"])');
   const navRect = Array.from(document.querySelectorAll<HTMLElement>('nav'))
     .map((el) => el.getBoundingClientRect())
     .find((r) => r.height > 0 && r.width > 0);
@@ -28,7 +28,6 @@ function measure(probe: HTMLElement | null): Reading {
     'nav padding-bottom': navStyle,
     'navigator.standalone': String((navigator as Navigator & { standalone?: boolean }).standalone),
     'display-mode standalone': String(window.matchMedia?.('(display-mode: standalone)').matches),
-    'app-height var': document.documentElement.style.getPropertyValue('--app-height') || 'non impostata',
     'devicePixelRatio': px(window.devicePixelRatio),
   };
 }

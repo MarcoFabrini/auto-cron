@@ -13,14 +13,14 @@ import { RouteFallback } from './RouteFallback';
  * - desktop (md+): Sidebar a sinistra + content
  *
  * Le pagine sono in lazy: il fallback occupa solo l'area contenuto, la shell resta a vista.
- * Radice fixed alta `--app-height` (lib/appHeight): in PWA iOS il viewport è più corto dello schermo e la BottomNav (absolute, dentro la radice) deve comunque arrivare al bordo.
+ * Radice `fixed inset-0`: segue il viewport reale anche in PWA iOS, dove 100dvh può restare più corto dello schermo.
  * Padding bottom contenuto = `pb-nav-clearance` (altezza della BottomNav, inset iOS compreso).
  * `<main>` è il contenitore che scrolla (non window): è anche quello del pull-to-refresh della PWA installata.
  */
 export function AppLayout() {
   const scrollRef = useRef<HTMLElement>(null);
   return (
-    <div className="fixed inset-x-0 top-0 flex h-[var(--app-height,100%)] flex-col overflow-hidden md:flex-row">
+    <div className="fixed inset-0 flex flex-col overflow-hidden md:flex-row">
       <Sidebar />
       <Topbar />
       <main

@@ -13,7 +13,6 @@ import { clearQueryCacheOnSessionChange } from '@/lib/sessionCache';
 import { shouldRetryQuery } from '@/lib/queryRetry';
 import { installChunkErrorRecovery } from '@/lib/chunkRecovery';
 import { startServiceWorker } from '@/lib/pwaUpdate';
-import { installAppHeightSync } from '@/lib/appHeight';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,9 +33,6 @@ installChunkErrorRecovery();
 
 // Service worker (build di produzione) e controllo periodico delle nuove versioni, vedi lib/pwaUpdate.
 startServiceWorker();
-
-// PWA iOS: viewport più corto dello schermo, vedi lib/appHeight.
-installAppHeightSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

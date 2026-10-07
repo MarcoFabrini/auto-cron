@@ -21,7 +21,7 @@ export function BottomNav() {
     <>
       <nav
         aria-label={t('nav.primary_mobile')}
-        className="absolute bottom-0 left-0 right-0 z-20 flex items-center border-t bg-card pb-safe-nav md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-20 flex items-center border-t bg-card pb-safe-nav md:hidden"
       >
         {home && <NavItem {...home} orientation="horizontal" />}
 
