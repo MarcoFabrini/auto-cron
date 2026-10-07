@@ -11,3 +11,4 @@ export { RouteFallback, type RouteFallbackProps } from './RouteFallback';
 export { Sidebar } from './Sidebar';
 export { Topbar } from './Topbar';
 export { UpdatePrompt } from './UpdatePrompt';
+export { ViewportDebug } from './ViewportDebug';
